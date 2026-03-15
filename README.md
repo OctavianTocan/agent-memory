@@ -1,6 +1,8 @@
-# claude-memory
+# agent-memory
 
-Persistent, structured memory for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). A local SQLite database that gives Claude long-term recall across sessions: facts about you, learned interaction preferences, daily logs, and semantic search over everything.
+Persistent, structured memory for AI coding agents. A local SQLite database with semantic search that gives your agent long-term recall across sessions: facts about you, learned interaction preferences, daily logs, and vector search over everything.
+
+Works with **Claude Code**, **Cline**, **Gemini CLI**, **Codex CLI**, **Aider**, **Cursor**, **Windsurf**, and anything else that can run shell commands.
 
 Zero dependencies beyond Python 3.9+ and SQLite (both ship with macOS and most Linux distros).
 
@@ -10,7 +12,7 @@ You: "I work at Acme Corp as a backend engineer"
   --> auto-extracted to: work / role: backend engineer
 
 You: "remember that the deploy freeze starts March 20"
-  --> Claude calls: mem-fact decisions deploy-freeze "starts March 20"
+  --> agent calls: mem-fact decisions deploy-freeze "starts March 20"
 
 Next session:
 === MEMORY CONTEXT [Tue 18 Mar 2026, 09:15] ===
@@ -25,12 +27,12 @@ work / role: backend engineer
 
 Three layers:
 
-1. **UserPromptSubmit hook** (`mem-context-hook`) fires before every message, queries `memory.db`, and injects a context block that Claude sees automatically
-2. **CLI scripts** (`mem-fact`, `mem-soul`, `mem-log`, etc.) that Claude calls to write memory, and you can use directly from your terminal
+1. **Hook/context injection** -- a script that fires before every message, queries `memory.db`, and injects a context block your agent sees automatically
+2. **CLI scripts** (`mem-fact`, `mem-soul`, `mem-log`, etc.) that agents call to write memory, and you can use directly from your terminal
 3. **SQLite database** (`memory.db`) with four tables: facts, soul, daily_logs, embeddings
 
 ```
-claude-memory/
+agent-memory/
 ├── bin/
 │   ├── mem-init            # Initialize the database schema
 │   ├── mem-fact            # Upsert a structured fact + auto-embed
@@ -40,36 +42,41 @@ claude-memory/
 │   ├── mem-query           # Raw SQLite query
 │   ├── mem-embed           # Generate an embedding for any text
 │   ├── mem-extract         # Auto-extract facts from user messages (regex)
-│   └── mem-context-hook    # The UserPromptSubmit hook script
+│   └── mem-context-hook    # Hook script (reads stdin, injects context to stdout)
 ├── memlib.py               # Shared library (DB path resolution, embedding API)
 ├── install.sh              # Symlink bin/ scripts to ~/.local/bin
 ├── .env.example            # Template for your Gemini API key
-├── .gitignore              # Excludes memory.db, .env, __pycache__
-├── MEMORY.md               # Quick reference (loaded by Claude)
-├── facts.md                # Category template
-└── soul.md                 # Soul template
+└── .gitignore              # Excludes memory.db, .env, __pycache__
 ```
 
-## Setup
-
-### 1. Clone and install
+## Quick start
 
 ```bash
-# Clone wherever you want
-git clone https://github.com/OctavianTocan/claude-memory.git
-cd claude-memory
+git clone https://github.com/OctavianTocan/agent-memory.git
+cd agent-memory
 
 # Initialize the database
 ./bin/mem-init
 
 # Symlink scripts to your PATH
 ./install.sh
+
+# (Optional) Enable semantic search
+cp .env.example .env
+# edit .env with your Gemini API key
 ```
 
-### 2. Register the hook
+Then follow the setup for your agent below.
 
-Add to your Claude Code settings (`~/.claude/settings.json`):
+---
 
+## Agent setup
+
+### Claude Code
+
+Claude Code has native hook support. Register `mem-context-hook` as a `UserPromptSubmit` hook.
+
+**`~/.claude/settings.json`:**
 ```json
 {
   "hooks": {
@@ -82,23 +89,6 @@ Add to your Claude Code settings (`~/.claude/settings.json`):
   }
 }
 ```
-
-### 3. (Optional) Enable semantic search
-
-Get a [Gemini API key](https://aistudio.google.com/apikey) (free tier works fine) and either:
-
-```bash
-# Option A: environment variable
-export GEMINI_API_KEY=your_key_here  # add to ~/.zshrc or ~/.bashrc
-
-# Option B: .env file in the repo
-cp .env.example .env
-# edit .env with your key
-```
-
-With a key, `mem-fact` auto-generates embeddings and `mem-search` does cosine similarity ranking. Without it, everything still works -- `mem-search` falls back to keyword matching.
-
-### 4. (Optional) Output style
 
 For the best experience, create an output style that tells Claude how to use memory proactively. Add to `~/.claude/output-styles/assistant.md`:
 
@@ -123,9 +113,224 @@ This contains FACTS, SOUL preferences, and TODAY'S LOG. Treat it as authoritativ
 | `mem-search "natural language"` | Semantic search across facts |
 ```
 
-Activate with: `/output-style assistant`
+Activate with `/output-style assistant`.
 
-## Commands
+---
+
+### Cline (VS Code)
+
+Cline v3.36+ supports hooks. Hooks are executable scripts placed in hook directories that receive JSON via stdin and return JSON via stdout.
+
+**1. Create the hook directory and script:**
+
+```bash
+mkdir -p ~/.cline/hooks/user_prompt_submit
+```
+
+Create `~/.cline/hooks/user_prompt_submit/memory.sh`:
+```bash
+#!/usr/bin/env bash
+# Cline hook: inject memory context into every prompt
+CONTEXT=$(mem-context-hook < /dev/null 2>/dev/null)
+if [[ -n "$CONTEXT" ]]; then
+    # Cline hooks return JSON with optional "message" to prepend
+    echo "{\"message\": $(echo "$CONTEXT" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')}"
+else
+    echo "{}"
+fi
+```
+```bash
+chmod +x ~/.cline/hooks/user_prompt_submit/memory.sh
+```
+
+**2. Add to your Cline custom instructions** (Settings > Custom Instructions):
+
+```
+You have access to a persistent memory system via shell commands:
+- mem-fact category subject "content" -- save a structured fact
+- mem-soul aspect "content" -- save an interaction preference
+- mem-log "note" -- log a notable event
+- mem-search "query" -- semantic search across all facts
+- mem-query "SQL" -- raw SQLite query
+
+Use these proactively when learning about the user, their project, or their preferences.
+The === MEMORY CONTEXT === block at the top of messages contains previously saved knowledge.
+```
+
+---
+
+### Gemini CLI
+
+Gemini CLI v0.26+ supports hooks similar to Claude Code.
+
+**1. Register the hook in `~/.gemini/settings.json`:**
+
+```json
+{
+  "hooks": {
+    "user_prompt_submit": [
+      {
+        "command": "mem-context-hook"
+      }
+    ]
+  }
+}
+```
+
+**2. Add memory instructions to your `GEMINI.md`** (in your home directory or project root):
+
+```markdown
+## Memory System
+
+You have a persistent memory system. A === MEMORY CONTEXT === block is injected
+before every message with previously saved facts, preferences, and session logs.
+
+Available commands (run via shell):
+- `mem-fact category subject "content"` -- save a fact
+- `mem-soul aspect "content"` -- save an interaction preference
+- `mem-log "note"` -- log something notable
+- `mem-search "query"` -- semantic search across facts
+- `mem-query "SQL"` -- raw SQLite query
+
+Save facts proactively when you learn about the user or project.
+```
+
+---
+
+### Codex CLI (OpenAI)
+
+Codex CLI reads `AGENTS.md` files for custom instructions and can run shell commands.
+
+**1. Add to your `AGENTS.md`** (project root or `~/.codex/AGENTS.md`):
+
+```markdown
+## Memory System
+
+You have a persistent memory system backed by SQLite. Before answering, check
+for relevant context by running: `mem-search "relevant query"`
+
+To save information for future sessions:
+- `mem-fact category subject "content"` -- structured facts (people, projects, decisions)
+- `mem-soul aspect "content"` -- interaction preferences
+- `mem-log "note"` -- session log entries
+
+To inject full context, run: `mem-context-hook < /dev/null`
+
+Save facts proactively when you learn about the user or their project.
+```
+
+Codex doesn't have hooks, so context injection is manual (the agent runs `mem-context-hook` or `mem-search` when it needs context). You can also prepend it to your prompt:
+
+```bash
+# Wrapper that injects memory before each Codex prompt
+CONTEXT=$(mem-context-hook < /dev/null 2>/dev/null)
+codex --system-prompt "$CONTEXT
+
+You have a persistent memory system. Use mem-fact/mem-soul/mem-log to save, mem-search to query."
+```
+
+---
+
+### Aider
+
+Aider supports `--read` for injecting files and `--system-prompt-extras` for custom system context.
+
+**Option A: Read a live context file (recommended)**
+
+Create a wrapper script `aider-mem`:
+```bash
+#!/usr/bin/env bash
+# Generate fresh memory context into a temp file, pass it to aider
+CONTEXT_FILE=$(mktemp /tmp/memory-context.XXXXXX.md)
+mem-context-hook < /dev/null > "$CONTEXT_FILE" 2>/dev/null
+aider --read "$CONTEXT_FILE" "$@"
+rm -f "$CONTEXT_FILE"
+```
+
+**Option B: Add to `.aider.conf.yml`**
+
+```yaml
+# Tell aider about the memory system
+system-prompt-extras: |
+  You have a persistent memory system. Run shell commands to use it:
+  - mem-fact category subject "content" -- save a fact
+  - mem-soul aspect "content" -- save a preference
+  - mem-search "query" -- search existing memories
+  - mem-context-hook < /dev/null -- get full memory context
+  Use these proactively when learning about the user or project.
+```
+
+---
+
+### Cursor / Windsurf
+
+These IDE-based agents can't run hooks natively, but you can inject memory through rules files.
+
+**1. Generate a context file on session start:**
+
+Add to your shell profile (`~/.zshrc` or `~/.bashrc`):
+```bash
+# Auto-refresh memory context for IDE agents
+alias refresh-memory='mem-context-hook < /dev/null > .agent-memory-context.md 2>/dev/null'
+```
+
+Add `.agent-memory-context.md` to your `.gitignore`.
+
+**2. Reference it in your rules:**
+
+**Cursor** (`.cursor/rules/memory.mdc`):
+```
+---
+description: Persistent memory system
+globs: *
+alwaysApply: true
+---
+Read `.agent-memory-context.md` at the start of every conversation for persistent
+context about the user and project.
+
+You can save new memories by running these terminal commands:
+- mem-fact category subject "content"
+- mem-soul aspect "content"
+- mem-log "note"
+- mem-search "query"
+
+After saving new facts, run: refresh-memory
+```
+
+**Windsurf** (`.windsurfrules`):
+```
+Read `.agent-memory-context.md` at the start of every conversation for persistent
+context about the user and project.
+
+You can save new memories by running terminal commands:
+- mem-fact category subject "content"
+- mem-soul aspect "content"
+- mem-search "query"
+
+After saving new facts, regenerate context: mem-context-hook < /dev/null > .agent-memory-context.md
+```
+
+---
+
+### Any other agent
+
+The memory system is just CLI scripts. If your agent can run shell commands, it can use memory:
+
+| To do this | Run this |
+|-----------|---------|
+| Get full context | `mem-context-hook < /dev/null` |
+| Save a fact | `mem-fact category subject "content"` |
+| Save a preference | `mem-soul aspect "content"` |
+| Log something | `mem-log "note"` |
+| Search memories | `mem-search "query"` |
+| Raw SQL | `mem-query "SELECT * FROM facts"` |
+| Initialize DB | `mem-init` |
+
+Add the table above to whatever instructions/rules file your agent reads.
+
+---
+
+## Commands reference
 
 | Command | What it does | Example |
 |---------|-------------|---------|
@@ -140,7 +345,6 @@ Activate with: `/output-style assistant`
 ## Database schema
 
 ```sql
--- Structured knowledge, keyed by (category, subject) for natural upserts
 CREATE TABLE facts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     category TEXT NOT NULL,
@@ -151,7 +355,6 @@ CREATE TABLE facts (
     UNIQUE(category, subject)
 );
 
--- Learned interaction preferences (how Claude should behave with you)
 CREATE TABLE soul (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     aspect TEXT NOT NULL UNIQUE,
@@ -160,7 +363,6 @@ CREATE TABLE soul (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Append-only session notes
 CREATE TABLE daily_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     date TEXT NOT NULL,
@@ -168,7 +370,6 @@ CREATE TABLE daily_logs (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Gemini vector embeddings for semantic search
 CREATE TABLE embeddings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     fact_id INTEGER NOT NULL UNIQUE,
@@ -193,17 +394,6 @@ Use whatever makes sense, but these work well as defaults:
 | `work` | Employer, role, team context |
 | `notes` | Everything else |
 
-## How context injection works
-
-The `mem-context-hook` script runs on every `UserPromptSubmit` event:
-
-1. Reads the user's message JSON from stdin
-2. Runs regex extraction (`mem-extract`) to auto-capture facts like "I work at X" or "my name is Y"
-3. Queries all facts, soul aspects, and today's logs from the DB
-4. Outputs a formatted context block that Claude sees before your message
-
-If the database is empty or doesn't exist, it outputs nothing.
-
 ## Configuration
 
 ### Custom database location
@@ -216,9 +406,23 @@ export CLAUDE_MEMORY_DB=/path/to/your/memory.db
 
 All scripts respect this variable.
 
+### Semantic search
+
+Get a free [Gemini API key](https://aistudio.google.com/apikey) and set it:
+
+```bash
+# Option A: environment variable
+export GEMINI_API_KEY=your_key_here
+
+# Option B: .env file in the repo
+cp .env.example .env
+```
+
+With a key, `mem-fact` auto-generates embeddings and `mem-search` does cosine similarity ranking. Without it, everything still works -- `mem-search` falls back to keyword matching.
+
 ## Credits
 
-Inspired by [pocket-agent](https://github.com/KenKaiii/pocket-agent). Built for use with [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
+Inspired by [pocket-agent](https://github.com/KenKaiii/pocket-agent).
 
 ## License
 
