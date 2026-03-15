@@ -12,7 +12,7 @@ You: "I work at Acme Corp as a backend engineer"
   --> auto-extracted to: work / role: backend engineer
 
 You: "remember that the deploy freeze starts March 20"
-  --> agent calls: mem-fact decisions deploy-freeze "starts March 20"
+  --> agent calls: mem fact decisions deploy-freeze "starts March 20"
 
 Next session:
 === MEMORY CONTEXT [Tue 18 Mar 2026, 09:15] ===
@@ -30,7 +30,7 @@ All agents on your machine share one database at `~/.agent-memory/memory.db`. Wh
 Three layers:
 
 1. **Hook/context injection** -- a script that fires before every message, queries `memory.db`, and injects a context block your agent sees automatically
-2. **CLI scripts** (`mem-fact`, `mem-soul`, `mem-log`, etc.) that agents call to write memory, and you can use directly from your terminal
+2. **One CLI** (`mem`) with subcommands that agents call to read/write memory, and you can use directly from your terminal
 3. **SQLite database** (`~/.agent-memory/memory.db`) with four tables: facts, soul, daily_logs, embeddings
 
 ```
@@ -40,17 +40,12 @@ Three layers:
 
 agent-memory/                 # The repo (code only)
 ├── bin/
-│   ├── mem-init              # Initialize the database schema
-│   ├── mem-fact              # Upsert a structured fact + auto-embed
-│   ├── mem-soul              # Upsert an interaction preference
-│   ├── mem-log               # Append to today's session log
-│   ├── mem-search            # Semantic search (Gemini embeddings, keyword fallback)
-│   ├── mem-query             # Raw SQLite query
-│   ├── mem-embed             # Generate an embedding for any text
-│   ├── mem-extract           # Auto-extract facts from user messages (regex)
-│   └── mem-context-hook      # Hook script (reads stdin, injects context to stdout)
+│   ├── mem                   # Unified CLI (mem fact, mem search, mem status, etc.)
+│   ├── mem-context-hook      # Hook script for context injection
+│   ├── mem-extract           # Auto-extract facts from user messages
+│   └── mem-*                 # Individual commands (also work standalone)
 ├── memlib.py                 # Shared library (DB path resolution, embedding API)
-├── install.sh                # Symlink scripts, init DB, set up ~/.agent-memory
+├── install.sh                # One-command setup
 └── .env.example              # Template for your Gemini API key
 ```
 
@@ -64,22 +59,53 @@ cd agent-memory
 
 That's it. `install.sh` will:
 1. Create `~/.agent-memory/` with a `.env` template
-2. Symlink all `mem-*` scripts to `~/.local/bin/`
+2. Symlink `mem` and all scripts to `~/.local/bin/`
 3. Initialize the database at `~/.agent-memory/memory.db`
 
-For semantic search, edit `~/.agent-memory/.env` with a free [Gemini API key](https://aistudio.google.com/apikey). Without it, everything works -- `mem-search` just falls back to keyword matching.
+For semantic search, edit `~/.agent-memory/.env` with a free [Gemini API key](https://aistudio.google.com/apikey). Without it, everything works -- `mem search` just falls back to keyword matching.
 
 Then set up whichever agents you use below. They all share the same database.
 
 ## Updating
 
 ```bash
-cd agent-memory
-git pull
-./install.sh
+mem update
 ```
 
-Scripts are symlinked, so `git pull` updates them in place. Re-running `install.sh` picks up any new scripts and is safe to run multiple times. Your data in `~/.agent-memory/` is never touched.
+Or manually: `cd agent-memory && git pull && ./install.sh`
+
+Scripts are symlinked, so pulling updates them in place. Your data in `~/.agent-memory/` is never touched.
+
+---
+
+## CLI
+
+Everything goes through one command: `mem`
+
+```
+mem fact <category> <subject> <content>    Save a structured fact + auto-embed
+mem soul <aspect> <content>                Save an interaction preference
+mem log <note>                             Append to today's session log
+mem search <query>                         Semantic search (keyword fallback)
+mem query <sql>                            Raw SQLite query
+mem embed <text>                           Generate an embedding vector
+mem init                                   Initialize the database schema
+mem status                                 Show database stats
+mem export                                 Export all data as JSON
+mem reset                                  Wipe the database (with confirmation)
+mem update                                 Pull latest code + re-install
+```
+
+Examples:
+
+```bash
+mem fact people alice "frontend lead, loves Rust"
+mem soul tone "prefers direct answers without preamble"
+mem log "shipped v2.1"
+mem search "who works on frontend"
+mem status
+mem export > backup.json
+```
 
 ---
 
@@ -87,7 +113,7 @@ Scripts are symlinked, so `git pull` updates them in place. Re-running `install.
 
 ### Claude Code
 
-Claude Code has native hook support. Register `mem-context-hook` as a `UserPromptSubmit` hook.
+Register `mem-context-hook` as a `UserPromptSubmit` hook.
 
 **`~/.claude/settings.json`:**
 ```json
@@ -119,11 +145,11 @@ This contains FACTS, SOUL preferences, and TODAY'S LOG. Treat it as authoritativ
 
 | Command | Usage |
 |---------|-------|
-| `mem-fact category subject "content"` | Save a structured fact |
-| `mem-soul aspect "content"` | Save an interaction preference |
-| `mem-log "note"` | Log a notable event |
-| `mem-query "SELECT ..."` | Query memory.db directly |
-| `mem-search "natural language"` | Semantic search across facts |
+| `mem fact category subject "content"` | Save a structured fact |
+| `mem soul aspect "content"` | Save an interaction preference |
+| `mem log "note"` | Log a notable event |
+| `mem query "SELECT ..."` | Query memory.db directly |
+| `mem search "natural language"` | Semantic search across facts |
 ```
 
 Activate with `/output-style assistant`.
@@ -169,12 +195,12 @@ The `contextModification` field injects text into the conversation that Cline se
 **2. Add to your Cline custom instructions** (Settings > Custom Instructions):
 
 ```
-You have access to a persistent memory system via shell commands:
-- mem-fact category subject "content" -- save a structured fact
-- mem-soul aspect "content" -- save an interaction preference
-- mem-log "note" -- log a notable event
-- mem-search "query" -- semantic search across all facts
-- mem-query "SQL" -- raw SQLite query
+You have access to a persistent memory system via the `mem` command:
+- mem fact category subject "content" -- save a structured fact
+- mem soul aspect "content" -- save an interaction preference
+- mem log "note" -- log a notable event
+- mem search "query" -- semantic search across all facts
+- mem query "SQL" -- raw SQLite query
 
 Use these proactively when learning about the user, their project, or their preferences.
 The === MEMORY CONTEXT === block injected via hooks contains previously saved knowledge.
@@ -211,11 +237,11 @@ You have a persistent memory system. A === MEMORY CONTEXT === block is injected
 before every message with previously saved facts, preferences, and session logs.
 
 Available commands (run via shell):
-- `mem-fact category subject "content"` -- save a fact
-- `mem-soul aspect "content"` -- save an interaction preference
-- `mem-log "note"` -- log something notable
-- `mem-search "query"` -- semantic search across facts
-- `mem-query "SQL"` -- raw SQLite query
+- `mem fact category subject "content"` -- save a fact
+- `mem soul aspect "content"` -- save an interaction preference
+- `mem log "note"` -- log something notable
+- `mem search "query"` -- semantic search across facts
+- `mem query "SQL"` -- raw SQLite query
 
 Save facts proactively when you learn about the user or project.
 ```
@@ -232,26 +258,26 @@ Codex CLI reads `AGENTS.md` files for custom instructions and can run shell comm
 ## Memory System
 
 You have a persistent memory system backed by SQLite. Before answering, check
-for relevant context by running: `mem-search "relevant query"`
+for relevant context by running: `mem search "relevant query"`
 
 To save information for future sessions:
-- `mem-fact category subject "content"` -- structured facts (people, projects, decisions)
-- `mem-soul aspect "content"` -- interaction preferences
-- `mem-log "note"` -- session log entries
+- `mem fact category subject "content"` -- structured facts (people, projects, decisions)
+- `mem soul aspect "content"` -- interaction preferences
+- `mem log "note"` -- session log entries
 
 To inject full context, run: `mem-context-hook < /dev/null`
 
 Save facts proactively when you learn about the user or their project.
 ```
 
-Codex doesn't have hooks, so context injection is manual (the agent runs `mem-context-hook` or `mem-search` when it needs context). You can also prepend it to your prompt:
+Codex doesn't have hooks, so context injection is manual (the agent runs `mem-context-hook` or `mem search` when it needs context). You can also prepend it to your prompt:
 
 ```bash
 # Wrapper that injects memory before each Codex prompt
 CONTEXT=$(mem-context-hook < /dev/null 2>/dev/null)
 codex --system-prompt "$CONTEXT
 
-You have a persistent memory system. Use mem-fact/mem-soul/mem-log to save, mem-search to query."
+You have a persistent memory system. Use mem fact/soul/log to save, mem search to query."
 ```
 
 ---
@@ -275,12 +301,11 @@ rm -f "$CONTEXT_FILE"
 **Option B: Add to `.aider.conf.yml`**
 
 ```yaml
-# Tell aider about the memory system
 system-prompt-extras: |
   You have a persistent memory system. Run shell commands to use it:
-  - mem-fact category subject "content" -- save a fact
-  - mem-soul aspect "content" -- save a preference
-  - mem-search "query" -- search existing memories
+  - mem fact category subject "content" -- save a fact
+  - mem soul aspect "content" -- save a preference
+  - mem search "query" -- search existing memories
   - mem-context-hook < /dev/null -- get full memory context
   Use these proactively when learning about the user or project.
 ```
@@ -314,10 +339,10 @@ Read `.agent-memory-context.md` at the start of every conversation for persisten
 context about the user and project.
 
 You can save new memories by running these terminal commands:
-- mem-fact category subject "content"
-- mem-soul aspect "content"
-- mem-log "note"
-- mem-search "query"
+- mem fact category subject "content"
+- mem soul aspect "content"
+- mem log "note"
+- mem search "query"
 
 After saving new facts, run: refresh-memory
 ```
@@ -328,44 +353,31 @@ Read `.agent-memory-context.md` at the start of every conversation for persisten
 context about the user and project.
 
 You can save new memories by running terminal commands:
-- mem-fact category subject "content"
-- mem-soul aspect "content"
-- mem-search "query"
+- mem fact category subject "content"
+- mem soul aspect "content"
+- mem search "query"
 
-After saving new facts, regenerate context: mem-context-hook < /dev/null > .agent-memory-context.md
+After saving, regenerate context: mem-context-hook < /dev/null > .agent-memory-context.md
 ```
 
 ---
 
 ### Any other agent
 
-The memory system is just CLI scripts. If your agent can run shell commands, it can use memory:
+If your agent can run shell commands, it can use memory:
 
-| To do this | Run this |
-|-----------|---------|
-| Get full context | `mem-context-hook < /dev/null` |
-| Save a fact | `mem-fact category subject "content"` |
-| Save a preference | `mem-soul aspect "content"` |
-| Log something | `mem-log "note"` |
-| Search memories | `mem-search "query"` |
-| Raw SQL | `mem-query "SELECT * FROM facts"` |
-| Initialize DB | `mem-init` |
+```
+mem fact category subject "content"    Save a fact
+mem soul aspect "content"              Save a preference
+mem log "note"                         Log something
+mem search "query"                     Search memories
+mem query "SELECT * FROM facts"        Raw SQL
+mem-context-hook < /dev/null           Get full context block
+```
 
-Add the table above to whatever instructions/rules file your agent reads.
+Add the above to whatever instructions/rules file your agent reads.
 
 ---
-
-## Commands reference
-
-| Command | What it does | Example |
-|---------|-------------|---------|
-| `mem-init` | Create/reset DB schema | `mem-init` |
-| `mem-fact` | Upsert a fact + embed | `mem-fact people alice "frontend lead"` |
-| `mem-soul` | Upsert a preference | `mem-soul tone "prefers direct answers"` |
-| `mem-log` | Append to today's log | `mem-log "shipped v2.1"` |
-| `mem-search` | Semantic search | `mem-search "who works on frontend"` |
-| `mem-query` | Raw SQL | `mem-query "SELECT * FROM facts"` |
-| `mem-embed` | Get embedding vector | `mem-embed "some text"` |
 
 ## Database schema
 

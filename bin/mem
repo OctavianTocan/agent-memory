@@ -1,0 +1,261 @@
+#!/usr/bin/env python3
+"""
+mem -- unified CLI for agent-memory
+
+Usage:
+    mem fact <category> <subject> <content>    Save a structured fact + auto-embed
+    mem soul <aspect> <content>                Save an interaction preference
+    mem log <note>                             Append to today's session log
+    mem search <query>                         Semantic search (keyword fallback)
+    mem query <sql>                            Raw SQLite query
+    mem embed <text>                           Generate an embedding vector
+    mem init                                   Initialize the database schema
+    mem status                                 Show database stats
+    mem export                                 Export all data as JSON
+    mem reset                                  Wipe the database (with confirmation)
+    mem update                                 Pull latest code + re-install
+    mem help                                   Show this help
+"""
+import sys, os, json, sqlite3, math, subprocess
+from datetime import date
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), ".."))
+from memlib import embed as do_embed, DB, DATA_DIR
+
+def get_conn():
+    return sqlite3.connect(DB)
+
+# -- subcommands --
+
+def cmd_fact(args):
+    if len(args) < 3:
+        print("Usage: mem fact <category> <subject> <content>", file=sys.stderr)
+        sys.exit(1)
+    category, subject, content = args[0], args[1], " ".join(args[2:])
+    conn = get_conn()
+    conn.execute("""
+        INSERT INTO facts (category, subject, content, updated_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(category, subject) DO UPDATE SET
+            content = excluded.content, updated_at = CURRENT_TIMESTAMP
+    """, (category, subject, content))
+    conn.commit()
+    row = conn.execute("SELECT id FROM facts WHERE category=? AND subject=?", (category, subject)).fetchone()
+    vector = do_embed(f"{category} {subject}: {content}")
+    if vector:
+        conn.execute("""
+            INSERT INTO embeddings (fact_id, vector) VALUES (?, ?)
+            ON CONFLICT(fact_id) DO UPDATE SET vector = excluded.vector, created_at = CURRENT_TIMESTAMP
+        """, (row[0], json.dumps(vector)))
+        conn.commit()
+        print(f"✓ fact saved + embedded: {category} / {subject}")
+    else:
+        print(f"✓ fact saved: {category} / {subject}")
+    conn.close()
+
+def cmd_soul(args):
+    if len(args) < 2:
+        print("Usage: mem soul <aspect> <content>", file=sys.stderr)
+        sys.exit(1)
+    aspect, content = args[0], " ".join(args[1:])
+    conn = get_conn()
+    conn.execute("""
+        INSERT INTO soul (aspect, content, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(aspect) DO UPDATE SET content = excluded.content, updated_at = CURRENT_TIMESTAMP
+    """, (aspect, content))
+    conn.commit()
+    conn.close()
+    print(f"✓ soul saved: {aspect}")
+
+def cmd_log(args):
+    if not args:
+        print("Usage: mem log <note>", file=sys.stderr)
+        sys.exit(1)
+    note = " ".join(args)
+    conn = get_conn()
+    conn.execute("INSERT INTO daily_logs (date, content) VALUES (?, ?)", (date.today().isoformat(), note))
+    conn.commit()
+    conn.close()
+    print(f"✓ logged: {note}")
+
+def cmd_search(args):
+    if not args:
+        print("Usage: mem search <query>", file=sys.stderr)
+        sys.exit(1)
+    query = " ".join(args)
+    if not os.path.exists(DB):
+        print("No memory.db found", file=sys.stderr)
+        sys.exit(1)
+    conn = get_conn()
+    # Try semantic search first
+    query_vec = do_embed(query)
+    if query_vec:
+        rows = conn.execute("""
+            SELECT f.category, f.subject, f.content, e.vector
+            FROM facts f JOIN embeddings e ON e.fact_id = f.id
+        """).fetchall()
+        if rows:
+            scored = []
+            for cat, subj, content, vec_json in rows:
+                stored = json.loads(vec_json)
+                dot = sum(a * b for a, b in zip(query_vec, stored))
+                mag_a = math.sqrt(sum(x * x for x in query_vec))
+                mag_b = math.sqrt(sum(x * x for x in stored))
+                score = dot / (mag_a * mag_b) if mag_a and mag_b else 0.0
+                if score >= 0.3:
+                    scored.append((score, cat, subj, content))
+            scored.sort(reverse=True)
+            if scored:
+                print(f'Top results for: "{query}"\n')
+                for score, cat, subj, content in scored[:5]:
+                    print(f"  [{score:.2f}] {cat} / {subj}: {content}")
+                conn.close()
+                return
+    # Keyword fallback
+    print("(keyword search)\n")
+    terms = query.lower().split()
+    rows = conn.execute("SELECT category, subject, content FROM facts").fetchall()
+    results = [(c, s, t) for c, s, t in rows if any(term in f"{c} {s} {t}".lower() for term in terms)]
+    if not results:
+        print("No results found.")
+    else:
+        for cat, subj, content in results:
+            print(f"  {cat} / {subj}: {content}")
+    conn.close()
+
+def cmd_query(args):
+    if not args:
+        print("Usage: mem query <sql>", file=sys.stderr)
+        sys.exit(1)
+    sql = " ".join(args)
+    subprocess.run(["sqlite3", "-column", "-header", DB, sql])
+
+def cmd_embed(args):
+    if not args:
+        print("Usage: mem embed <text>", file=sys.stderr)
+        sys.exit(1)
+    vector = do_embed(" ".join(args))
+    if vector is None:
+        print("Error: could not generate embedding (check GEMINI_API_KEY)", file=sys.stderr)
+        sys.exit(1)
+    print(json.dumps(vector))
+
+def cmd_init(_args):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    conn = sqlite3.connect(DB)
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS facts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL, subject TEXT NOT NULL, content TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(category, subject)
+        );
+        CREATE TABLE IF NOT EXISTS soul (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            aspect TEXT NOT NULL UNIQUE, content TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS daily_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL, content TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS embeddings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fact_id INTEGER NOT NULL UNIQUE, vector TEXT NOT NULL,
+            model TEXT DEFAULT 'gemini-embedding-001',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (fact_id) REFERENCES facts(id) ON DELETE CASCADE
+        );
+    """)
+    conn.close()
+    print(f"✓ memory.db initialized at {DB}")
+
+def cmd_status(_args):
+    if not os.path.exists(DB):
+        print("No memory.db found. Run: mem init")
+        return
+    conn = get_conn()
+    facts = conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0]
+    soul = conn.execute("SELECT COUNT(*) FROM soul").fetchone()[0]
+    embeds = conn.execute("SELECT COUNT(*) FROM embeddings").fetchone()[0]
+    today = date.today().isoformat()
+    logs = conn.execute("SELECT COUNT(*) FROM daily_logs WHERE date=?", (today,)).fetchone()[0]
+    total_logs = conn.execute("SELECT COUNT(*) FROM daily_logs").fetchone()[0]
+    size = os.path.getsize(DB)
+    conn.close()
+    print(f"agent-memory status")
+    print(f"  db:         {DB} ({size / 1024:.0f} KB)")
+    print(f"  facts:      {facts} ({embeds} with embeddings)")
+    print(f"  soul:       {soul} aspects")
+    print(f"  logs today: {logs} (total: {total_logs})")
+
+def cmd_export(_args):
+    if not os.path.exists(DB):
+        print("No memory.db found.", file=sys.stderr)
+        sys.exit(1)
+    conn = get_conn()
+    data = {
+        "facts": [dict(zip(["category", "subject", "content"], r))
+                  for r in conn.execute("SELECT category, subject, content FROM facts ORDER BY category, subject").fetchall()],
+        "soul": [dict(zip(["aspect", "content"], r))
+                 for r in conn.execute("SELECT aspect, content FROM soul ORDER BY aspect").fetchall()],
+        "logs": [dict(zip(["date", "content", "created_at"], r))
+                 for r in conn.execute("SELECT date, content, created_at FROM daily_logs ORDER BY created_at").fetchall()],
+    }
+    conn.close()
+    print(json.dumps(data, indent=2))
+
+def cmd_reset(_args):
+    if not os.path.exists(DB):
+        print("No memory.db found.")
+        return
+    confirm = input(f"This will delete all data in {DB}. Type 'yes' to confirm: ")
+    if confirm.strip().lower() != "yes":
+        print("Aborted.")
+        return
+    os.remove(DB)
+    cmd_init([])
+    print("✓ Database reset.")
+
+def cmd_update(_args):
+    # Find the repo directory (parent of bin/)
+    repo_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..")
+    print(f"Updating from {repo_dir}")
+    subprocess.run(["git", "-C", repo_dir, "pull"])
+    install = os.path.join(repo_dir, "install.sh")
+    subprocess.run(["bash", install])
+
+def cmd_help(_args):
+    print(__doc__.strip())
+
+COMMANDS = {
+    "fact": cmd_fact,
+    "soul": cmd_soul,
+    "log": cmd_log,
+    "search": cmd_search,
+    "query": cmd_query,
+    "embed": cmd_embed,
+    "init": cmd_init,
+    "status": cmd_status,
+    "export": cmd_export,
+    "reset": cmd_reset,
+    "update": cmd_update,
+    "help": cmd_help,
+}
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
+        cmd_help([])
+        sys.exit(0)
+    cmd = sys.argv[1]
+    if cmd not in COMMANDS:
+        print(f"Unknown command: {cmd}", file=sys.stderr)
+        print(f"Run 'mem help' for usage.", file=sys.stderr)
+        sys.exit(1)
+    COMMANDS[cmd](sys.argv[2:])
+
+if __name__ == "__main__":
+    main()

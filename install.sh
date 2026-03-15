@@ -21,7 +21,8 @@ fi
 # 3. Symlink bin scripts to PATH
 mkdir -p "$BIN_DIR"
 
-for script in "$SCRIPT_DIR"/bin/mem-*; do
+for script in "$SCRIPT_DIR"/bin/mem "$SCRIPT_DIR"/bin/mem-*; do
+    [[ ! -f "$script" ]] && continue
     name="$(basename "$script")"
     target="$BIN_DIR/$name"
 
@@ -33,11 +34,11 @@ for script in "$SCRIPT_DIR"/bin/mem-*; do
     fi
 
     ln -s "$script" "$target"
-    echo "  linked: $target -> $script"
+    echo "  linked: $name"
 done
 
 # 4. Initialize the database
-"$BIN_DIR/mem-init"
+"$BIN_DIR/mem" init
 
 echo ""
 echo "==> Done. All agents on this machine now share $DATA_DIR/memory.db"
