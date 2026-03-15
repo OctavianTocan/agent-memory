@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # UserPromptSubmit hook -- regex extraction + memory context injection
-# Fires before every Claude Code message.
+# Fires before every agent message. Works with Claude Code, Cline, Gemini CLI, etc.
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || realpath "$0")")" && pwd)"
-DB="${CLAUDE_MEMORY_DB:-$SCRIPT_DIR/../memory.db}"
+DATA_DIR="${AGENT_MEMORY_DIR:-$HOME/.agent-memory}"
+DB="$DATA_DIR/memory.db"
 
 # Read the JSON payload from stdin (contains the user's prompt)
 stdin_content=$(cat 2>/dev/null)

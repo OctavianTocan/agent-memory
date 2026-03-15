@@ -1,16 +1,14 @@
 """
-Shared library for the Claude memory system scripts.
+Shared library for the agent-memory system.
 """
 import json, os, urllib.request
 
 MODEL = "gemini-embedding-001"
+DATA_DIR = os.path.expanduser(os.environ.get("AGENT_MEMORY_DIR", "~/.agent-memory"))
 
 def _resolve_db():
-    """Resolve the memory.db path. Priority: CLAUDE_MEMORY_DB env var > memory.db next to this file."""
-    env = os.environ.get("CLAUDE_MEMORY_DB", "")
-    if env:
-        return os.path.expanduser(env)
-    return os.path.join(os.path.dirname(os.path.realpath(__file__)), "memory.db")
+    """Resolve the memory.db path. Priority: AGENT_MEMORY_DIR env var > ~/.agent-memory/"""
+    return os.path.join(DATA_DIR, "memory.db")
 
 DB = _resolve_db()
 
@@ -18,7 +16,8 @@ def get_api_key():
     key = os.environ.get("GEMINI_API_KEY", "")
     if key:
         return key
-    env_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), ".env")
+    # Check .env in the data directory (~/.agent-memory/.env)
+    env_file = os.path.join(DATA_DIR, ".env")
     if os.path.exists(env_file):
         with open(env_file) as f:
             for line in f:

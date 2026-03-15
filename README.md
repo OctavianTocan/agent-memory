@@ -25,28 +25,33 @@ work / role: backend engineer
 
 ## How it works
 
+All agents on your machine share one database at `~/.agent-memory/memory.db`. Whatever Claude Code learns about you, Cline and Gemini CLI also know. Whatever Cursor saves, Aider can search.
+
 Three layers:
 
 1. **Hook/context injection** -- a script that fires before every message, queries `memory.db`, and injects a context block your agent sees automatically
 2. **CLI scripts** (`mem-fact`, `mem-soul`, `mem-log`, etc.) that agents call to write memory, and you can use directly from your terminal
-3. **SQLite database** (`memory.db`) with four tables: facts, soul, daily_logs, embeddings
+3. **SQLite database** (`~/.agent-memory/memory.db`) with four tables: facts, soul, daily_logs, embeddings
 
 ```
-agent-memory/
+~/.agent-memory/              # Shared data (not in the repo)
+├── memory.db                 # The single shared database
+└── .env                      # Your GEMINI_API_KEY for semantic search
+
+agent-memory/                 # The repo (code only)
 ├── bin/
-│   ├── mem-init            # Initialize the database schema
-│   ├── mem-fact            # Upsert a structured fact + auto-embed
-│   ├── mem-soul            # Upsert an interaction preference
-│   ├── mem-log             # Append to today's session log
-│   ├── mem-search          # Semantic search (Gemini embeddings, keyword fallback)
-│   ├── mem-query           # Raw SQLite query
-│   ├── mem-embed           # Generate an embedding for any text
-│   ├── mem-extract         # Auto-extract facts from user messages (regex)
-│   └── mem-context-hook    # Hook script (reads stdin, injects context to stdout)
-├── memlib.py               # Shared library (DB path resolution, embedding API)
-├── install.sh              # Symlink bin/ scripts to ~/.local/bin
-├── .env.example            # Template for your Gemini API key
-└── .gitignore              # Excludes memory.db, .env, __pycache__
+│   ├── mem-init              # Initialize the database schema
+│   ├── mem-fact              # Upsert a structured fact + auto-embed
+│   ├── mem-soul              # Upsert an interaction preference
+│   ├── mem-log               # Append to today's session log
+│   ├── mem-search            # Semantic search (Gemini embeddings, keyword fallback)
+│   ├── mem-query             # Raw SQLite query
+│   ├── mem-embed             # Generate an embedding for any text
+│   ├── mem-extract           # Auto-extract facts from user messages (regex)
+│   └── mem-context-hook      # Hook script (reads stdin, injects context to stdout)
+├── memlib.py                 # Shared library (DB path resolution, embedding API)
+├── install.sh                # Symlink scripts, init DB, set up ~/.agent-memory
+└── .env.example              # Template for your Gemini API key
 ```
 
 ## Quick start
@@ -54,19 +59,17 @@ agent-memory/
 ```bash
 git clone https://github.com/OctavianTocan/agent-memory.git
 cd agent-memory
-
-# Initialize the database
-./bin/mem-init
-
-# Symlink scripts to your PATH
 ./install.sh
-
-# (Optional) Enable semantic search
-cp .env.example .env
-# edit .env with your Gemini API key
 ```
 
-Then follow the setup for your agent below.
+That's it. `install.sh` will:
+1. Create `~/.agent-memory/` with a `.env` template
+2. Symlink all `mem-*` scripts to `~/.local/bin/`
+3. Initialize the database at `~/.agent-memory/memory.db`
+
+For semantic search, edit `~/.agent-memory/.env` with a free [Gemini API key](https://aistudio.google.com/apikey). Without it, everything works -- `mem-search` just falls back to keyword matching.
+
+Then set up whichever agents you use below. They all share the same database.
 
 ---
 
@@ -396,29 +399,15 @@ Use whatever makes sense, but these work well as defaults:
 
 ## Configuration
 
-### Custom database location
+### Custom data directory
 
-By default, `memory.db` lives next to `memlib.py`. Override with:
-
-```bash
-export CLAUDE_MEMORY_DB=/path/to/your/memory.db
-```
-
-All scripts respect this variable.
-
-### Semantic search
-
-Get a free [Gemini API key](https://aistudio.google.com/apikey) and set it:
+By default, all data lives in `~/.agent-memory/`. Override with:
 
 ```bash
-# Option A: environment variable
-export GEMINI_API_KEY=your_key_here
-
-# Option B: .env file in the repo
-cp .env.example .env
+export AGENT_MEMORY_DIR=/path/to/your/data
 ```
 
-With a key, `mem-fact` auto-generates embeddings and `mem-search` does cosine similarity ranking. Without it, everything still works -- `mem-search` falls back to keyword matching.
+All scripts respect this variable. The directory will contain `memory.db` and `.env`.
 
 ## Credits
 
