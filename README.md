@@ -122,29 +122,39 @@ Activate with `/output-style assistant`.
 
 ### Cline (VS Code)
 
-Cline v3.36+ supports hooks. Hooks are executable scripts placed in hook directories that receive JSON via stdin and return JSON via stdout.
+Cline v3.36+ supports hooks. Hook scripts are executable files named after the hook type (no extension on macOS/Linux), placed in a hooks directory.
 
-**1. Create the hook directory and script:**
+**1. Create the hook script:**
+
+Global hooks go in `~/Documents/Cline/Hooks/`. Project hooks go in `.clinerules/hooks/`.
 
 ```bash
-mkdir -p ~/.cline/hooks/user_prompt_submit
+# Global (applies to all projects)
+mkdir -p ~/Documents/Cline/Hooks
+
+# Or project-level (committable)
+mkdir -p .clinerules/hooks
 ```
 
-Create `~/.cline/hooks/user_prompt_submit/memory.sh`:
+Create the hook file named exactly `UserPromptSubmit` (no extension):
+
 ```bash
+cat > ~/Documents/Cline/Hooks/UserPromptSubmit << 'HOOK'
 #!/usr/bin/env bash
-# Cline hook: inject memory context into every prompt
+# Cline hook: inject agent-memory context into every prompt
+INPUT=$(cat)
 CONTEXT=$(mem-context-hook < /dev/null 2>/dev/null)
 if [[ -n "$CONTEXT" ]]; then
-    # Cline hooks return JSON with optional "message" to prepend
-    echo "{\"message\": $(echo "$CONTEXT" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')}"
+    ESCAPED=$(echo "$CONTEXT" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')
+    echo "{\"cancel\":false,\"contextModification\":$ESCAPED}"
 else
-    echo "{}"
+    echo '{"cancel":false}'
 fi
+HOOK
+chmod +x ~/Documents/Cline/Hooks/UserPromptSubmit
 ```
-```bash
-chmod +x ~/.cline/hooks/user_prompt_submit/memory.sh
-```
+
+The `contextModification` field injects text into the conversation that Cline sees before responding.
 
 **2. Add to your Cline custom instructions** (Settings > Custom Instructions):
 
@@ -157,8 +167,10 @@ You have access to a persistent memory system via shell commands:
 - mem-query "SQL" -- raw SQLite query
 
 Use these proactively when learning about the user, their project, or their preferences.
-The === MEMORY CONTEXT === block at the top of messages contains previously saved knowledge.
+The === MEMORY CONTEXT === block injected via hooks contains previously saved knowledge.
 ```
+
+**3. Enable hooks** in Cline settings (Features > Hooks). macOS and Linux only.
 
 ---
 
