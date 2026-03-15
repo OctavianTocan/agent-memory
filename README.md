@@ -71,6 +71,16 @@ For semantic search, edit `~/.agent-memory/.env` with a free [Gemini API key](ht
 
 Then set up whichever agents you use below. They all share the same database.
 
+## Updating
+
+```bash
+cd agent-memory
+git pull
+./install.sh
+```
+
+Scripts are symlinked, so `git pull` updates them in place. Re-running `install.sh` picks up any new scripts and is safe to run multiple times. Your data in `~/.agent-memory/` is never touched.
+
 ---
 
 ## Agent setup
