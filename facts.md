@@ -6,18 +6,16 @@ Format: `**subject**: content`
 ---
 
 ## user_info
-**name**: Octavian Tocan
-**username**: octaviantocan
-**machine**: macOS Darwin 25.3.0, external SSD at /Volumes/Crucial X10
+(your name, location, etc.)
 
 ## projects
-(add project-specific facts here as we work)
+(project-specific facts)
 
 ## preferences
-(add tool/workflow preferences here)
+(tool/workflow preferences)
 
 ## work
-(add work context here)
+(work context)
 
 ## notes
 (misc notes)

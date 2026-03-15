@@ -3,15 +3,14 @@
 Memory system is active. See [README.md](README.md) for full docs.
 
 ## Quick Commands
-- `mem-fact category subject "content"` — save a fact
-- `mem-soul aspect "content"` — save interaction preference
-- `mem-log "note"` — log something notable
-- `mem-query "SELECT ..."` — query memory.db directly
+- `mem-fact category subject "content"` -- save a fact
+- `mem-soul aspect "content"` -- save interaction preference
+- `mem-log "note"` -- log something notable
+- `mem-search "query"` -- semantic search across facts
+- `mem-query "SELECT ..."` -- query memory.db directly
+- `mem-init` -- initialize or reset the database schema
 
 **IMPORTANT:** Always use these scripts to write/read memory. NEVER use `sqlite3` directly.
-
-## Current Soul
-- `communication_style`: prefers direct, concise responses. confirm before acting
 
 ## Check Memory
 ```

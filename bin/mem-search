@@ -5,7 +5,8 @@ Usage: mem-search "natural language query"
 Falls back to keyword search if no embeddings are stored or API unavailable.
 """
 import sys, json, os, math, sqlite3
-sys.path.insert(0, os.path.expanduser("~/.claude/projects/-Volumes-Crucial-X10-assistant/memory"))
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), ".."))
 from memlib import embed, DB
 
 THRESHOLD = 0.3
@@ -65,7 +66,7 @@ def main():
     results = semantic_search(query, conn)
 
     if results is None:
-        print("(no embeddings — using keyword search)\n")
+        print("(no embeddings -- using keyword search)\n")
         kw = keyword_search(query, conn)
         if not kw:
             print("No results found.")

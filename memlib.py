@@ -4,13 +4,21 @@ Shared library for the Claude memory system scripts.
 import json, os, urllib.request
 
 MODEL = "gemini-embedding-001"
-DB = os.path.expanduser("~/.claude/projects/-Volumes-Crucial-X10-assistant/memory/memory.db")
+
+def _resolve_db():
+    """Resolve the memory.db path. Priority: CLAUDE_MEMORY_DB env var > memory.db next to this file."""
+    env = os.environ.get("CLAUDE_MEMORY_DB", "")
+    if env:
+        return os.path.expanduser(env)
+    return os.path.join(os.path.dirname(os.path.realpath(__file__)), "memory.db")
+
+DB = _resolve_db()
 
 def get_api_key():
     key = os.environ.get("GEMINI_API_KEY", "")
     if key:
         return key
-    env_file = os.path.join(os.path.dirname(__file__), ".env")
+    env_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), ".env")
     if os.path.exists(env_file):
         with open(env_file) as f:
             for line in f:

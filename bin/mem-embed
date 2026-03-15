@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Generate a Gemini text-embedding-004 embedding for a piece of text.
+Generate a Gemini embedding for a piece of text.
 Usage: mem-embed "text to embed"
-Output: JSON array of 768 floats, or exits with code 1 if unavailable.
+Output: JSON array of floats, or exits with code 1 if unavailable.
 """
-import sys, os
-sys.path.insert(0, os.path.expanduser("~/.claude/projects/-Volumes-Crucial-X10-assistant/memory"))
+import sys, os, json
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), ".."))
 from memlib import embed
 
 if __name__ == "__main__":
@@ -13,7 +14,6 @@ if __name__ == "__main__":
     if not text:
         print("Usage: mem-embed <text>", file=sys.stderr)
         sys.exit(1)
-    import json
     vector = embed(text)
     if vector is None:
         print("Error: could not generate embedding (check GEMINI_API_KEY)", file=sys.stderr)

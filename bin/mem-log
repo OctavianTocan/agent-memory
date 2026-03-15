@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-mem-log "note" — append a timestamped note to today's log in memory.db
+mem-log "note" -- append a timestamped note to today's log in memory.db
 Example: mem-log "merged PR 696 on web-app"
 """
 import sys, os, sqlite3
 from datetime import date
-sys.path.insert(0, os.path.expanduser("~/.claude/projects/-Volumes-Crucial-X10-assistant/memory"))
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), ".."))
 from memlib import DB
 
 def main():

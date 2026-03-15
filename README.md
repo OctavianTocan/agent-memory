@@ -1,116 +1,225 @@
-# Claude Memory System
+# claude-memory
 
-Persistent memory for Claude Code, inspired by [pocket-agent](https://github.com/KenKaiii/pocket-agent).
+Persistent, structured memory for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). A local SQLite database that gives Claude long-term recall across sessions: facts about you, learned interaction preferences, daily logs, and semantic search over everything.
 
-## How It Works
+Zero dependencies beyond Python 3.9+ and SQLite (both ship with macOS and most Linux distros).
 
-Three layers work together:
-
-### 1. Output Style — static behavioral rules
-**File:** `~/.claude/output-styles/assistant.md`
-**Activate with:** `/output-style assistant`
-
-Tells Claude when and how to use memory. Keeps the default coding instructions and adds:
-- When to call each mem-* command (proactively, not just when asked)
-- Behavior rules: confirm before acting, concise, no preamble
-- How to interpret the injected memory context block
-
-### 2. UserPromptSubmit Hook — dynamic per-turn injection
-**Script:** `~/.local/bin/mem-context-hook`
-**Registered in:** `~/.claude/settings.json` (global — all projects)
-
-Fires before every message. Queries `memory.db` and prepends a context block:
 ```
-=== MEMORY CONTEXT [Mon 09 Mar 2026, 18:45] ===
+You: "I work at Acme Corp as a backend engineer"
+  --> auto-extracted to: work / employer: Acme Corp
+  --> auto-extracted to: work / role: backend engineer
 
+You: "remember that the deploy freeze starts March 20"
+  --> Claude calls: mem-fact decisions deploy-freeze "starts March 20"
+
+Next session:
+=== MEMORY CONTEXT [Tue 18 Mar 2026, 09:15] ===
 FACTS:
-people / harsh: is an asshole
-decisions / pr-696: merge first on web-app per Mahi
-
-SOUL:
-communication_style: prefers direct, concise responses
-
-TODAY'S LOG:
-- [18:30] initialized memory system
-
+decisions / deploy-freeze: starts March 20
+work / employer: Acme Corp
+work / role: backend engineer
 === END MEMORY CONTEXT ===
 ```
-Outputs nothing if the DB is empty — no noise.
 
-### 3. SQLite Database — structured storage
-**File:** `~/.claude/projects/-Volumes-Crucial-X10-assistant/memory/memory.db`
+## How it works
 
-| Table | Purpose |
-|-------|---------|
-| `facts` | Structured knowledge: people, projects, decisions, preferences |
-| `soul` | Learned interaction preferences |
-| `daily_logs` | Append-only session notes |
+Three layers:
+
+1. **UserPromptSubmit hook** (`mem-context-hook`) fires before every message, queries `memory.db`, and injects a context block that Claude sees automatically
+2. **CLI scripts** (`mem-fact`, `mem-soul`, `mem-log`, etc.) that Claude calls to write memory, and you can use directly from your terminal
+3. **SQLite database** (`memory.db`) with four tables: facts, soul, daily_logs, embeddings
+
+```
+claude-memory/
+├── bin/
+│   ├── mem-init            # Initialize the database schema
+│   ├── mem-fact            # Upsert a structured fact + auto-embed
+│   ├── mem-soul            # Upsert an interaction preference
+│   ├── mem-log             # Append to today's session log
+│   ├── mem-search          # Semantic search (Gemini embeddings, keyword fallback)
+│   ├── mem-query           # Raw SQLite query
+│   ├── mem-embed           # Generate an embedding for any text
+│   ├── mem-extract         # Auto-extract facts from user messages (regex)
+│   └── mem-context-hook    # The UserPromptSubmit hook script
+├── memlib.py               # Shared library (DB path resolution, embedding API)
+├── install.sh              # Symlink bin/ scripts to ~/.local/bin
+├── .env.example            # Template for your Gemini API key
+├── .gitignore              # Excludes memory.db, .env, __pycache__
+├── MEMORY.md               # Quick reference (loaded by Claude)
+├── facts.md                # Category template
+└── soul.md                 # Soul template
+```
+
+## Setup
+
+### 1. Clone and install
+
+```bash
+# Clone wherever you want
+git clone https://github.com/OctavianTocan/claude-memory.git
+cd claude-memory
+
+# Initialize the database
+./bin/mem-init
+
+# Symlink scripts to your PATH
+./install.sh
+```
+
+### 2. Register the hook
+
+Add to your Claude Code settings (`~/.claude/settings.json`):
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "type": "command",
+        "command": "mem-context-hook"
+      }
+    ]
+  }
+}
+```
+
+### 3. (Optional) Enable semantic search
+
+Get a [Gemini API key](https://aistudio.google.com/apikey) (free tier works fine) and either:
+
+```bash
+# Option A: environment variable
+export GEMINI_API_KEY=your_key_here  # add to ~/.zshrc or ~/.bashrc
+
+# Option B: .env file in the repo
+cp .env.example .env
+# edit .env with your key
+```
+
+With a key, `mem-fact` auto-generates embeddings and `mem-search` does cosine similarity ranking. Without it, everything still works -- `mem-search` falls back to keyword matching.
+
+### 4. (Optional) Output style
+
+For the best experience, create an output style that tells Claude how to use memory proactively. Add to `~/.claude/output-styles/assistant.md`:
+
+```markdown
+# Assistant Mode
+
+You have a persistent memory system. Use it actively.
+
+## Memory Context Block
+
+Every message you receive is prefixed with an === MEMORY CONTEXT === block.
+This contains FACTS, SOUL preferences, and TODAY'S LOG. Treat it as authoritative.
+
+## Memory Commands
+
+| Command | Usage |
+|---------|-------|
+| `mem-fact category subject "content"` | Save a structured fact |
+| `mem-soul aspect "content"` | Save an interaction preference |
+| `mem-log "note"` | Log a notable event |
+| `mem-query "SELECT ..."` | Query memory.db directly |
+| `mem-search "natural language"` | Semantic search across facts |
+```
+
+Activate with: `/output-style assistant`
 
 ## Commands
 
-All scripts live in `~/.local/bin/` and are on PATH.
+| Command | What it does | Example |
+|---------|-------------|---------|
+| `mem-init` | Create/reset DB schema | `mem-init` |
+| `mem-fact` | Upsert a fact + embed | `mem-fact people alice "frontend lead"` |
+| `mem-soul` | Upsert a preference | `mem-soul tone "prefers direct answers"` |
+| `mem-log` | Append to today's log | `mem-log "shipped v2.1"` |
+| `mem-search` | Semantic search | `mem-search "who works on frontend"` |
+| `mem-query` | Raw SQL | `mem-query "SELECT * FROM facts"` |
+| `mem-embed` | Get embedding vector | `mem-embed "some text"` |
 
-| Command | Example | Action |
-|---------|---------|--------|
-| `mem-fact category subject "content"` | `mem-fact people harsh "is an asshole"` | Upsert a fact + generate embedding |
-| `mem-soul aspect "content"` | `mem-soul tone "prefers direct answers"` | Upsert soul aspect |
-| `mem-log "note"` | `mem-log "merged PR 696"` | Append to today's log |
-| `mem-query "SQL"` | `mem-query "SELECT * FROM facts"` | Raw DB query |
-| `mem-search "query"` | `mem-search "web app decisions"` | Semantic search (falls back to keyword) |
-| `mem-embed "text"` | `mem-embed "some text"` | Generate a Gemini embedding |
+## Database schema
 
-## Semantic Search Setup
+```sql
+-- Structured knowledge, keyed by (category, subject) for natural upserts
+CREATE TABLE facts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(category, subject)
+);
 
-Requires `GEMINI_API_KEY` in your environment. Add to `~/.zshrc`:
+-- Learned interaction preferences (how Claude should behave with you)
+CREATE TABLE soul (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    aspect TEXT NOT NULL UNIQUE,
+    content TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Append-only session notes
+CREATE TABLE daily_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Gemini vector embeddings for semantic search
+CREATE TABLE embeddings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fact_id INTEGER NOT NULL UNIQUE,
+    vector TEXT NOT NULL,
+    model TEXT DEFAULT 'gemini-embedding-001',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (fact_id) REFERENCES facts(id) ON DELETE CASCADE
+);
 ```
-export GEMINI_API_KEY=your_key_here
+
+## Fact categories
+
+Use whatever makes sense, but these work well as defaults:
+
+| Category | For |
+|----------|-----|
+| `user_info` | Name, location, personal details |
+| `people` | Colleagues, contacts, anyone by name |
+| `projects` | Status, constraints, dependencies, decisions |
+| `preferences` | Tools, workflows, habits |
+| `decisions` | Architectural or workflow decisions |
+| `work` | Employer, role, team context |
+| `notes` | Everything else |
+
+## How context injection works
+
+The `mem-context-hook` script runs on every `UserPromptSubmit` event:
+
+1. Reads the user's message JSON from stdin
+2. Runs regex extraction (`mem-extract`) to auto-capture facts like "I work at X" or "my name is Y"
+3. Queries all facts, soul aspects, and today's logs from the DB
+4. Outputs a formatted context block that Claude sees before your message
+
+If the database is empty or doesn't exist, it outputs nothing.
+
+## Configuration
+
+### Custom database location
+
+By default, `memory.db` lives next to `memlib.py`. Override with:
+
+```bash
+export CLAUDE_MEMORY_DB=/path/to/your/memory.db
 ```
-Or create `~/.claude/projects/-Volumes-Crucial-X10-assistant/memory/.env`:
-```
-GEMINI_API_KEY=your_key_here
-```
 
-Once set, `mem-fact` automatically generates and stores embeddings. `mem-search` then uses cosine similarity (threshold: 0.3, top 5 results) with keyword fallback.
+All scripts respect this variable.
 
-## Fact Categories
+## Credits
 
-- `user_info` — name, location, personal details
-- `people` — colleagues, contacts, anyone by name
-- `projects` — project status, constraints, dependencies
-- `preferences` — tools, workflows, habits
-- `decisions` — architectural or workflow decisions
-- `work` — employer, role, team
-- `notes` — misc
+Inspired by [pocket-agent](https://github.com/KenKaiii/pocket-agent). Built for use with [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
 
-## Usage
+## License
 
-1. Start a session: `/output-style assistant`
-2. Memory context is injected automatically before every message
-3. Claude saves facts/soul/logs proactively as you talk — you don't need to say "remember"
-4. Explicit: "remember that X" or "note that Y" also works
-5. Query anytime: `mem-query "SELECT * FROM facts WHERE category='people'"`
-
-## Files
-
-```
-~/.claude/
-├── output-styles/
-│   └── assistant.md              # Output style definition
-├── settings.json                 # Hook registered here (global)
-└── projects/-Volumes-Crucial-X10-assistant/memory/
-    ├── README.md                 # This file
-    ├── MEMORY.md                 # Auto-loaded index
-    ├── memory.db                 # SQLite database
-    ├── memlib.py                 # Shared Python library (embed, DB path)
-    └── .env                      # Optional: GEMINI_API_KEY (gitignored)
-
-~/.local/bin/
-├── mem-context-hook              # UserPromptSubmit hook (reads stdin, extracts facts, injects context)
-├── mem-extract                   # Python: regex fact extraction from message JSON
-├── mem-fact                      # Upsert a fact + generate embedding
-├── mem-soul                      # Upsert a soul aspect
-├── mem-log                       # Append to daily log
-├── mem-query                     # Raw SQLite query
-├── mem-search                    # Semantic search with Gemini embeddings
-└── mem-embed                     # Generate a Gemini embedding for any text
-```
+MIT

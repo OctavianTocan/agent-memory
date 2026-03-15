@@ -6,7 +6,8 @@ Called by mem-context-hook before every message.
 """
 import json, sys, re, sqlite3, os
 
-DB = os.path.expanduser("~/.claude/projects/-Volumes-Crucial-X10-assistant/memory/memory.db")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), ".."))
+from memlib import DB
 
 PATTERNS = [
     (r"my name is (\w+)", "user_info", "name"),

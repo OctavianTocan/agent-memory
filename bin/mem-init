@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""
+Initialize memory.db with the required schema.
+Safe to run multiple times -- uses CREATE TABLE IF NOT EXISTS.
+Usage: mem-init
+"""
+import sys, os, sqlite3
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), ".."))
+from memlib import DB
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS facts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(category, subject)
+);
+
+CREATE TABLE IF NOT EXISTS soul (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    aspect TEXT NOT NULL UNIQUE,
+    content TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS daily_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS embeddings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fact_id INTEGER NOT NULL UNIQUE,
+    vector TEXT NOT NULL,
+    model TEXT DEFAULT 'gemini-embedding-001',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (fact_id) REFERENCES facts(id) ON DELETE CASCADE
+);
+"""
+
+def main():
+    os.makedirs(os.path.dirname(DB), exist_ok=True)
+    conn = sqlite3.connect(DB)
+    conn.executescript(SCHEMA)
+    conn.close()
+    print(f"✓ memory.db initialized at {DB}")
+
+if __name__ == "__main__":
+    main()
