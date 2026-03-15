@@ -1,0 +1,50 @@
+#!/usr/bin/env zsh
+# UserPromptSubmit hook — regex extraction + memory context injection
+# Fires before every Claude Code message.
+
+DB="$HOME/.claude/projects/-Volumes-Crucial-X10-assistant/memory/memory.db"
+
+# Read the JSON payload from stdin (contains the user's prompt)
+stdin_content=$(cat 2>/dev/null)
+
+# Run regex extraction on the prompt, save any matched facts to DB
+if [[ -n "$stdin_content" ]]; then
+    echo "$stdin_content" | python3 "$HOME/.local/bin/mem-extract" 2>/dev/null
+fi
+
+# Exit silently if DB doesn't exist
+[[ ! -f "$DB" ]] && exit 0
+
+# Check if any data exists
+has_facts=$(sqlite3 "$DB" "SELECT COUNT(*) FROM facts;" 2>/dev/null)
+has_soul=$(sqlite3 "$DB" "SELECT COUNT(*) FROM soul;" 2>/dev/null)
+today=$(date +%Y-%m-%d)
+has_logs=$(sqlite3 "$DB" "SELECT COUNT(*) FROM daily_logs WHERE date='$today';" 2>/dev/null)
+
+# Exit silently if nothing to show
+[[ "$has_facts" == "0" && "$has_soul" == "0" && "$has_logs" == "0" ]] && exit 0
+
+datetime=$(date "+%a %d %b %Y, %H:%M")
+
+echo "=== MEMORY CONTEXT [$datetime] ==="
+
+if [[ "$has_facts" != "0" ]]; then
+    echo ""
+    echo "FACTS:"
+    sqlite3 "$DB" "SELECT category || ' / ' || subject || ': ' || content FROM facts ORDER BY category, subject;" 2>/dev/null
+fi
+
+if [[ "$has_soul" != "0" ]]; then
+    echo ""
+    echo "SOUL:"
+    sqlite3 "$DB" "SELECT aspect || ': ' || content FROM soul ORDER BY aspect;" 2>/dev/null
+fi
+
+if [[ "$has_logs" != "0" ]]; then
+    echo ""
+    echo "TODAY'S LOG:"
+    sqlite3 "$DB" "SELECT '- [' || strftime('%H:%M', created_at, 'localtime') || '] ' || content FROM daily_logs WHERE date='$today' ORDER BY created_at;" 2>/dev/null
+fi
+
+echo ""
+echo "=== END MEMORY CONTEXT ==="

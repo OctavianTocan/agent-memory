@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""
+Reads a Claude Code UserPromptSubmit JSON payload from stdin.
+Runs regex patterns to auto-extract facts and saves them to memory.db.
+Called by mem-context-hook before every message.
+"""
+import json, sys, re, sqlite3, os
+
+DB = os.path.expanduser("~/.claude/projects/-Volumes-Crucial-X10-assistant/memory/memory.db")
+
+PATTERNS = [
+    (r"my name is (\w+)", "user_info", "name"),
+    (r"call me (\w+)", "user_info", "name"),
+    (r"i live in ([^.,\n]+)", "user_info", "location"),
+    (r"i'?m from ([^.,\n]+)", "user_info", "location"),
+    (r"i work (?:at|for) ([^.,\n]+?)(?=\s+and\b|\s+but\b|\s*[.,]|\s*$)", "work", "employer"),
+    (r"i work as (?:a |an )?([^.,\n]+?)(?=\s+and\b|\s+but\b|\s*[.,]|\s*$)", "work", "role"),
+    (r"my job is ([^.,\n]+?)(?=\s+and\b|\s+but\b|\s*[.,]|\s*$)", "work", "role"),
+    (r"i'?m a ([^.,\n]+?) (?:at|for|who)", "work", "role"),
+]
+
+def save_fact(conn, category, subject, content):
+    content = content.strip()
+    if not content:
+        return
+    conn.execute("""
+        INSERT INTO facts (category, subject, content, updated_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(category, subject) DO UPDATE SET
+            content = excluded.content,
+            updated_at = CURRENT_TIMESTAMP
+    """, (category, subject, content))
+
+def main():
+    try:
+        data = json.load(sys.stdin)
+        prompt = data.get("prompt", "")
+    except Exception:
+        return
+
+    if not prompt or not os.path.exists(DB):
+        return
+
+    conn = sqlite3.connect(DB)
+    found = False
+
+    for pattern, category, subject in PATTERNS:
+        match = re.search(pattern, prompt, re.IGNORECASE)
+        if match:
+            save_fact(conn, category, subject, match.group(1))
+            found = True
+
+    if found:
+        conn.commit()
+    conn.close()
+
+if __name__ == "__main__":
+    main()

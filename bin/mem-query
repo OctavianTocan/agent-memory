@@ -1,0 +1,5 @@
+#!/usr/bin/env zsh
+# mem-query "SQL" — run a raw SQLite query against memory.db
+DB="$HOME/.claude/projects/-Volumes-Crucial-X10-assistant/memory/memory.db"
+query="${1:?Usage: mem-query <sql>}"
+sqlite3 -column -header "$DB" "$query"
