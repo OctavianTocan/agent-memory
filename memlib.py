@@ -3,7 +3,8 @@ Shared library for the agent-memory system.
 """
 import json, os, urllib.request
 
-MODEL = "gemini-embedding-001"
+MODEL = "gemini-embedding-2-preview"
+EMBED_DIMENSIONS = 768
 DATA_DIR = os.path.expanduser(os.environ.get("AGENT_MEMORY_DIR", "~/.agent-memory"))
 
 def _resolve_db():
@@ -32,7 +33,8 @@ def embed(text):
         return None
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:embedContent?key={api_key}"
     payload = json.dumps({
-        "content": {"parts": [{"text": text}]}
+        "content": {"parts": [{"text": text}]},
+        "outputDimensionality": EMBED_DIMENSIONS,
     }).encode()
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
     try:
