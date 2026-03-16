@@ -411,7 +411,7 @@ CREATE TABLE embeddings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     fact_id INTEGER NOT NULL UNIQUE,
     vector TEXT NOT NULL,
-    model TEXT DEFAULT 'gemini-embedding-001',
+    model TEXT DEFAULT 'gemini-embedding-2-preview',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (fact_id) REFERENCES facts(id) ON DELETE CASCADE
 );
