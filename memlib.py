@@ -4,7 +4,7 @@ Shared library for the agent-memory system.
 import json, os, urllib.request
 
 MODEL = "gemini-embedding-2-preview"
-EMBED_DIMENSIONS = 768
+EMBED_DIMENSIONS = 3072
 DATA_DIR = os.path.expanduser(os.environ.get("AGENT_MEMORY_DIR", "~/.agent-memory"))
 
 def _resolve_db():
