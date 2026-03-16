@@ -2,6 +2,27 @@
 
 All notable changes to agent-memory are documented here.
 
+## [0.3.0] - 2026-03-16
+
+### Added
+- **Agent-memory skill** with cookbook pattern for Claude Code (`skills/agent-memory/`)
+  - `SKILL.md` with CLI reference, decision tree, and cookbook routing
+  - `cookbook/install.md` -- step-by-step first-time setup guide
+  - `cookbook/saving.md` -- when and how to save facts, soul, and logs
+  - `cookbook/searching.md` -- semantic search and raw SQL queries
+  - `cookbook/rules.md` -- non-negotiable best practices
+- **One-command install** now sets up everything: CLI, database, skill, and hooks
+  - Automatically installs the skill to `~/.claude/skills/agent-memory/`
+  - Automatically configures `UserPromptSubmit` hook for Claude Code (if `~/.claude/` exists)
+  - Automatically configures `user_prompt_submit` hook for Gemini CLI (if `~/.gemini/` exists)
+  - Safe: won't overwrite existing settings files, prints manual instructions instead
+- Installable via `npx skills add OctavianTocan/agent-memory` (vercel-labs/skills compatible)
+
+### Changed
+- `install.sh` expanded from 4 steps to 7 (added skill install, Claude Code hook, Gemini CLI hook)
+- README quick start simplified: `git clone && ./install.sh` now does everything
+- README reorganized: added Skill section, marked Claude Code/Gemini CLI setup as automatic
+
 ## [0.2.0] - 2026-03-16
 
 ### Added

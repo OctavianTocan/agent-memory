@@ -44,8 +44,11 @@ agent-memory/                 # The repo (code only)
 │   ├── mem-context-hook      # Hook script for context injection
 │   ├── mem-extract           # Auto-extract facts from user messages
 │   └── mem-*                 # Individual commands (also work standalone)
+├── skills/agent-memory/      # Claude Code skill (teaches agents how to use memory)
+│   ├── SKILL.md              # Skill entry point
+│   └── cookbook/              # Detailed guides (install, saving, searching, rules)
 ├── memlib.py                 # Shared library (DB path resolution, embedding API)
-├── install.sh                # One-command setup
+├── install.sh                # One-command setup (CLI + skill + hooks)
 └── .env.example              # Template for your Gemini API key
 ```
 
@@ -61,10 +64,12 @@ That's it. `install.sh` will:
 1. Create `~/.agent-memory/` with a `.env` template
 2. Symlink `mem` and all scripts to `~/.local/bin/`
 3. Initialize the database at `~/.agent-memory/memory.db`
+4. Install the agent-memory skill to `~/.claude/skills/` (teaches Claude how to use memory proactively)
+5. Set up the `UserPromptSubmit` hook for Claude Code and/or Gemini CLI (if installed)
 
 For semantic search, edit `~/.agent-memory/.env` with a free [Gemini API key](https://aistudio.google.com/apikey). Without it, everything works -- `mem search` just falls back to keyword matching.
 
-Then set up whichever agents you use below. They all share the same database.
+For other agents (Cline, Cursor, Windsurf, Aider, Codex), see the [agent setup](#agent-setup) section below.
 
 ## Updating
 
@@ -109,11 +114,26 @@ mem export > backup.json
 
 ---
 
+## Skill
+
+agent-memory ships with a [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code/skills) that teaches your agent when and how to use memory proactively. The installer sets this up automatically.
+
+The skill includes a cookbook with detailed guides for saving, searching, and best practices. When your agent encounters something worth remembering, it knows what to do without you telling it.
+
+If you only want the skill (without running `install.sh`):
+```bash
+npx skills add OctavianTocan/agent-memory
+```
+
+---
+
 ## Agent setup
+
+> **Claude Code and Gemini CLI are set up automatically by `install.sh`.** The sections below are for reference or manual setup.
 
 ### Claude Code
 
-Register `mem-context-hook` as a `UserPromptSubmit` hook.
+`install.sh` configures both the hook and the skill automatically. If you need to set it up manually:
 
 **`~/.claude/settings.json`:**
 ```json
@@ -129,7 +149,7 @@ Register `mem-context-hook` as a `UserPromptSubmit` hook.
 }
 ```
 
-For the best experience, create an output style that tells Claude how to use memory proactively. Add to `~/.claude/output-styles/assistant.md`:
+For even better results, create an output style that tells Claude how to use memory proactively. Add to `~/.claude/output-styles/assistant.md`:
 
 ```markdown
 # Assistant Mode
@@ -212,7 +232,7 @@ The === MEMORY CONTEXT === block injected via hooks contains previously saved kn
 
 ### Gemini CLI
 
-Gemini CLI v0.26+ supports hooks similar to Claude Code.
+`install.sh` configures the hook automatically if `~/.gemini/` exists. For manual setup:
 
 **1. Register the hook in `~/.gemini/settings.json`:**
 
