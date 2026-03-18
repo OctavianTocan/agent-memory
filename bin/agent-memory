@@ -1,0 +1,21 @@
+#!/usr/bin/env node
+// Thin shim that delegates to the Python `mem` CLI.
+// Installed via npm as both `agent-memory` and `mem`.
+
+const { execFileSync } = require("child_process");
+const path = require("path");
+
+const mem = path.join(__dirname, "mem");
+const args = ["-u", mem, ...process.argv.slice(2)];
+
+try {
+  execFileSync("python3", args, { stdio: "inherit", env: process.env });
+} catch (e) {
+  if (e.code === "ENOENT") {
+    process.stderr.write(
+      "Error: python3 not found. Install Python 3.9+ and ensure it is on your PATH.\n"
+    );
+    process.exit(127);
+  }
+  process.exit(e.status ?? 1);
+}

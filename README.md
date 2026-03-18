@@ -40,19 +40,34 @@ Three layers:
 
 agent-memory/                 # The repo (code only)
 ├── bin/
+│   ├── agent-memory          # Node.js shim (npm bin entry)
 │   ├── mem                   # Unified CLI (mem fact, mem search, mem status, etc.)
 │   ├── mem-context-hook      # Hook script for context injection
 │   ├── mem-extract           # Auto-extract facts from user messages
-│   └── mem-*                 # Individual commands (also work standalone)
+│   └── mem-init              # Database schema initialization
 ├── skills/agent-memory/      # Claude Code skill (teaches agents how to use memory)
 │   ├── SKILL.md              # Skill entry point
 │   └── cookbook/              # Detailed guides (install, saving, searching, rules)
+├── scripts/postinstall.sh    # npm postinstall (DB init, skill, hooks)
 ├── memlib.py                 # Shared library (DB path resolution, embedding API)
-├── install.sh                # One-command setup (CLI + skill + hooks)
+├── install.sh                # Git-clone setup (CLI + skill + hooks)
+├── package.json              # npm package config
 └── .env.example              # Template for your Gemini API key
 ```
 
 ## Quick start
+
+### Option A: npm (recommended)
+
+```bash
+npm install -g @octavian-tocan/agent-memory
+```
+
+This installs the `mem` and `agent-memory` commands, initializes the database, installs the Claude Code skill, and configures hooks -- all automatically via postinstall.
+
+Requires Python 3.9+ and Node.js (any recent version).
+
+### Option B: git clone
 
 ```bash
 git clone https://github.com/OctavianTocan/agent-memory.git
@@ -60,9 +75,9 @@ cd agent-memory
 ./install.sh
 ```
 
-That's it. `install.sh` will:
+`install.sh` will:
 1. Create `~/.agent-memory/` with a `.env` template
-2. Symlink `mem` and all scripts to `~/.local/bin/`
+2. Symlink `mem` and `mem-context-hook` to `~/.local/bin/`
 3. Initialize the database at `~/.agent-memory/memory.db`
 4. Install the agent-memory skill to `~/.claude/skills/` (teaches Claude how to use memory proactively)
 5. Set up the `UserPromptSubmit` hook for Claude Code and/or Gemini CLI (if installed)
@@ -96,7 +111,9 @@ mem query <sql>                            Raw SQLite query
 mem embed <text>                           Generate an embedding vector
 mem init                                   Initialize the database schema
 mem status                                 Show database stats
-mem export                                 Export all data as JSON
+mem export                                 Export all data as JSON (lightweight)
+mem dump [file]                            Full database dump to JSON file
+mem import [file] [--force]                Import data from a dump file
 mem reset                                  Wipe the database (with confirmation)
 mem update                                 Pull latest code + re-install
 ```
@@ -110,6 +127,9 @@ mem log "shipped v2.1"
 mem search "who works on frontend"
 mem status
 mem export > backup.json
+mem dump ~/backup.json               # full backup including embeddings
+mem import ~/backup.json             # restore on another machine
+mem import ~/backup.json --force     # wipe + restore
 ```
 
 ---

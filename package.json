@@ -1,0 +1,45 @@
+{
+  "name": "@octavian-tocan/agent-memory",
+  "version": "0.5.0",
+  "description": "Persistent memory system for AI coding agents. Works with Claude Code, Cline, Gemini CLI, Codex, Aider, Cursor, Windsurf.",
+  "bin": {
+    "agent-memory": "./bin/agent-memory",
+    "mem": "./bin/agent-memory",
+    "mem-context-hook": "./bin/mem-context-hook"
+  },
+  "scripts": {
+    "postinstall": "bash scripts/postinstall.sh || true",
+    "test": "python3 -m pytest tests/"
+  },
+  "files": [
+    "bin/agent-memory",
+    "bin/mem",
+    "bin/mem-init",
+    "bin/mem-extract",
+    "bin/mem-context-hook",
+    "memlib.py",
+    "scripts/",
+    "skills/",
+    ".env.example"
+  ],
+  "keywords": [
+    "ai",
+    "agent",
+    "memory",
+    "claude-code",
+    "gemini-cli",
+    "coding-agent",
+    "sqlite",
+    "semantic-search",
+    "llm"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OctavianTocan/agent-memory.git"
+  },
+  "homepage": "https://github.com/OctavianTocan/agent-memory#readme",
+  "bugs": {
+    "url": "https://github.com/OctavianTocan/agent-memory/issues"
+  }
+}

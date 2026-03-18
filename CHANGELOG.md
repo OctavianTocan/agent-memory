@@ -2,6 +2,19 @@
 
 All notable changes to agent-memory are documented here.
 
+## [0.5.0] - 2026-03-18
+
+### Added
+- **npm package**: install via `npm install -g @octavian-tocan/agent-memory`
+  - Node.js bin shim delegates to Python scripts -- zero Node dependencies
+  - `postinstall` script automatically initializes database, installs Claude Code skill, and configures hooks
+  - Registers both `agent-memory` and `mem` as CLI commands
+- Integration test suite for dump/import (21 tests, real SQLite, zero mocking)
+
+### Changed
+- Removed standalone `mem-fact`, `mem-soul`, `mem-log`, `mem-embed`, `mem-search`, `mem-query` scripts -- use `mem <subcommand>` instead (the unified CLI has had these since v0.2.0)
+- `install.sh` now only symlinks `mem` and `mem-context-hook` (no more standalone script symlinks)
+
 ## [0.4.0] - 2026-03-18
 
 ### Added

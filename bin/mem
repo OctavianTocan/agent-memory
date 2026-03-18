@@ -19,7 +19,7 @@ Usage:
     mem help                                   Show this help
 """
 import sys, os, json, sqlite3, math, subprocess
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), ".."))
 from memlib import embed as do_embed, DB, DATA_DIR
@@ -218,7 +218,7 @@ def cmd_dump(args):
     conn = get_conn()
     data = {
         "version": "1.0",
-        "exported_at": datetime.utcnow().isoformat() + "Z",
+        "exported_at": datetime.now(timezone.utc).isoformat(),
         "tables": {
             "facts": [
                 dict(zip(["id", "category", "subject", "content", "created_at", "updated_at"], r))

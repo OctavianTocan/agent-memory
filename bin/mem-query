@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-# mem-query "SQL" -- run a raw SQLite query against memory.db
-DATA_DIR="${AGENT_MEMORY_DIR:-$HOME/.agent-memory}"
-DB="$DATA_DIR/memory.db"
-query="${1:?Usage: mem-query <sql>}"
-sqlite3 -column -header "$DB" "$query"
