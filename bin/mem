@@ -11,13 +11,15 @@ Usage:
     mem embed <text>                           Generate an embedding vector
     mem init                                   Initialize the database schema
     mem status                                 Show database stats
-    mem export                                 Export all data as JSON
+    mem export                                 Export all data as JSON (lightweight)
+    mem dump [file]                            Full database dump to JSON file
+    mem import [file] [--force]                Import data from a dump file
     mem reset                                  Wipe the database (with confirmation)
     mem update                                 Pull latest code + re-install
     mem help                                   Show this help
 """
 import sys, os, json, sqlite3, math, subprocess
-from datetime import date
+from datetime import date, datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), ".."))
 from memlib import embed as do_embed, DB, DATA_DIR
@@ -208,6 +210,134 @@ def cmd_export(_args):
     conn.close()
     print(json.dumps(data, indent=2))
 
+def cmd_dump(args):
+    if not os.path.exists(DB):
+        print("No memory.db found.", file=sys.stderr)
+        sys.exit(1)
+    out_path = args[0] if args else os.path.join(DATA_DIR, "memory-dump.json")
+    conn = get_conn()
+    data = {
+        "version": "1.0",
+        "exported_at": datetime.utcnow().isoformat() + "Z",
+        "tables": {
+            "facts": [
+                dict(zip(["id", "category", "subject", "content", "created_at", "updated_at"], r))
+                for r in conn.execute(
+                    "SELECT id, category, subject, content, created_at, updated_at FROM facts ORDER BY id"
+                ).fetchall()
+            ],
+            "soul": [
+                dict(zip(["id", "aspect", "content", "created_at", "updated_at"], r))
+                for r in conn.execute(
+                    "SELECT id, aspect, content, created_at, updated_at FROM soul ORDER BY id"
+                ).fetchall()
+            ],
+            "daily_logs": [
+                dict(zip(["id", "date", "content", "created_at"], r))
+                for r in conn.execute(
+                    "SELECT id, date, content, created_at FROM daily_logs ORDER BY id"
+                ).fetchall()
+            ],
+            "embeddings": [
+                dict(zip(["id", "fact_id", "vector", "model", "created_at"], r))
+                for r in conn.execute(
+                    "SELECT id, fact_id, vector, model, created_at FROM embeddings ORDER BY id"
+                ).fetchall()
+            ],
+        },
+    }
+    conn.close()
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+    with open(out_path, "w") as f:
+        json.dump(data, f, indent=2)
+    total = sum(len(rows) for rows in data["tables"].values())
+    print(f"✓ Dumped {total} rows to {out_path}")
+
+def cmd_import(args):
+    force = "--force" in args
+    file_args = [a for a in args if a != "--force"]
+    in_path = file_args[0] if file_args else os.path.join(DATA_DIR, "memory-dump.json")
+    if not os.path.exists(in_path):
+        print(f"File not found: {in_path}", file=sys.stderr)
+        sys.exit(1)
+    with open(in_path) as f:
+        data = json.load(f)
+    # Validate structure
+    if "tables" not in data:
+        print("Invalid dump file: missing 'tables' key.", file=sys.stderr)
+        sys.exit(1)
+    tables = data["tables"]
+    expected = {"facts", "soul", "daily_logs", "embeddings"}
+    missing = expected - set(tables.keys())
+    if missing:
+        print(f"Invalid dump file: missing tables {missing}.", file=sys.stderr)
+        sys.exit(1)
+    # Ensure DB exists
+    if not os.path.exists(DB):
+        cmd_init([])
+    conn = get_conn()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    counts = {}
+    try:
+        if force:
+            for tbl in ["embeddings", "daily_logs", "soul", "facts"]:
+                conn.execute(f"DELETE FROM {tbl}")
+            conn.commit()
+        # Import facts
+        c = 0
+        for row in tables.get("facts", []):
+            conn.execute(
+                "INSERT OR REPLACE INTO facts (id, category, subject, content, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (row["id"], row["category"], row["subject"], row["content"],
+                 row.get("created_at"), row.get("updated_at")),
+            )
+            c += 1
+        counts["facts"] = c
+        # Import soul
+        c = 0
+        for row in tables.get("soul", []):
+            conn.execute(
+                "INSERT OR REPLACE INTO soul (id, aspect, content, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (row["id"], row["aspect"], row["content"],
+                 row.get("created_at"), row.get("updated_at")),
+            )
+            c += 1
+        counts["soul"] = c
+        # Import daily_logs
+        c = 0
+        for row in tables.get("daily_logs", []):
+            conn.execute(
+                "INSERT OR REPLACE INTO daily_logs (id, date, content, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (row["id"], row["date"], row["content"], row.get("created_at")),
+            )
+            c += 1
+        counts["daily_logs"] = c
+        # Import embeddings
+        c = 0
+        for row in tables.get("embeddings", []):
+            conn.execute(
+                "INSERT OR REPLACE INTO embeddings (id, fact_id, vector, model, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (row["id"], row["fact_id"], row["vector"],
+                 row.get("model", "unknown"), row.get("created_at")),
+            )
+            c += 1
+        counts["embeddings"] = c
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"Import failed: {e}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        conn.close()
+    total = sum(counts.values())
+    print(f"✓ Imported {total} rows from {in_path}")
+    for tbl, n in counts.items():
+        print(f"  {tbl}: {n}")
+
 def cmd_reset(_args):
     if not os.path.exists(DB):
         print("No memory.db found.")
@@ -241,6 +371,8 @@ COMMANDS = {
     "init": cmd_init,
     "status": cmd_status,
     "export": cmd_export,
+    "dump": cmd_dump,
+    "import": cmd_import,
     "reset": cmd_reset,
     "update": cmd_update,
     "help": cmd_help,

@@ -2,6 +2,21 @@
 
 All notable changes to agent-memory are documented here.
 
+## [0.4.0] - 2026-03-18
+
+### Added
+- **`mem dump [file]`** -- full database export to a JSON file, including all four tables (facts, soul, daily_logs, embeddings) with complete row data (IDs, timestamps, embedding vectors)
+- **`mem import [file] [--force]`** -- import data from a dump file into any database
+  - `INSERT OR REPLACE` merge by default (idempotent, safe to re-run)
+  - `--force` flag wipes all tables before importing for a clean slate
+  - Auto-initializes the database if it doesn't exist
+  - Validates dump file structure before importing
+- Dump format includes `version` and `exported_at` metadata for forward compatibility
+- Integration test suite (`tests/test_dump_import.py`) with 21 tests covering dump, import, round-trip, merge vs force modes, error handling, and cross-directory portability -- all using real SQLite databases with zero mocking
+
+### Changed
+- `mem export` kept as a lightweight stdout-only export (facts/soul/logs, no IDs or embeddings); `mem dump` is now the recommended way to back up or migrate
+
 ## [0.3.0] - 2026-03-16
 
 ### Added
