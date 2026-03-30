@@ -6,6 +6,9 @@ SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || realpath "$0")")"
 DATA_DIR="${AGENT_MEMORY_DIR:-$HOME/.agent-memory}"
 DB="$DATA_DIR/memory.db"
 
+# Tier 1 categories: full content injection
+TIER1_CATEGORIES="'user_info','preferences'"
+
 # Read the JSON payload from stdin (contains the user's prompt)
 stdin_content=$(cat 2>/dev/null)
 
@@ -30,22 +33,42 @@ datetime=$(date "+%a %d %b %Y, %H:%M")
 
 echo "=== MEMORY CONTEXT [$datetime] ==="
 
-if [[ "$has_facts" != "0" ]]; then
-    echo ""
-    echo "FACTS:"
-    sqlite3 "$DB" "SELECT category || ' / ' || subject || ': ' || content FROM facts ORDER BY category, subject;" 2>/dev/null
-fi
-
+# SOUL: always full content
 if [[ "$has_soul" != "0" ]]; then
     echo ""
     echo "SOUL:"
     sqlite3 "$DB" "SELECT aspect || ': ' || content FROM soul ORDER BY aspect;" 2>/dev/null
 fi
 
+# USER: user_info category, full content
+has_user=$(sqlite3 "$DB" "SELECT COUNT(*) FROM facts WHERE category='user_info';" 2>/dev/null)
+if [[ "$has_user" != "0" ]]; then
+    echo ""
+    echo "USER:"
+    sqlite3 "$DB" "SELECT subject || ': ' || content FROM facts WHERE category='user_info' ORDER BY subject;" 2>/dev/null
+fi
+
+# PREFERENCES: preferences category, full content
+has_prefs=$(sqlite3 "$DB" "SELECT COUNT(*) FROM facts WHERE category='preferences';" 2>/dev/null)
+if [[ "$has_prefs" != "0" ]]; then
+    echo ""
+    echo "PREFERENCES:"
+    sqlite3 "$DB" "SELECT subject || ': ' || content FROM facts WHERE category='preferences' ORDER BY subject;" 2>/dev/null
+fi
+
+# TODAY'S LOG
 if [[ "$has_logs" != "0" ]]; then
     echo ""
     echo "TODAY'S LOG:"
     sqlite3 "$DB" "SELECT '- [' || strftime('%H:%M', created_at, 'localtime') || '] ' || content FROM daily_logs WHERE date='$today' ORDER BY created_at;" 2>/dev/null
+fi
+
+# INDEX: all other facts (tier 2), description or truncated content
+has_index=$(sqlite3 "$DB" "SELECT COUNT(*) FROM facts WHERE category NOT IN ($TIER1_CATEGORIES);" 2>/dev/null)
+if [[ "$has_index" != "0" ]]; then
+    echo ""
+    echo "INDEX (use \`mem query \"SELECT content FROM facts WHERE category='x' AND subject='y'\"\` to fetch details):"
+    sqlite3 "$DB" "SELECT category || '/' || subject || ': ' || COALESCE(description, REPLACE(SUBSTR(content, 1, 80), CHAR(10), ' ')) FROM facts WHERE category NOT IN ($TIER1_CATEGORIES) ORDER BY category, subject;" 2>/dev/null
 fi
 
 echo ""
