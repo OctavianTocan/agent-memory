@@ -149,6 +149,7 @@ def cmd_init(_args):
         CREATE TABLE IF NOT EXISTS facts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             category TEXT NOT NULL, subject TEXT NOT NULL, content TEXT NOT NULL,
+            description TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(category, subject)
@@ -172,6 +173,14 @@ def cmd_init(_args):
             FOREIGN KEY (fact_id) REFERENCES facts(id) ON DELETE CASCADE
         );
     """)
+
+    # Idempotent migration: add description column if it doesn't exist
+    cursor = conn.execute("PRAGMA table_info(facts)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "description" not in columns:
+        conn.execute("ALTER TABLE facts ADD COLUMN description TEXT")
+        conn.commit()
+
     conn.close()
     print(f"✓ memory.db initialized at {DB}")
 
