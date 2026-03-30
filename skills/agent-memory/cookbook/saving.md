@@ -36,12 +36,23 @@ Facts are keyed by `(category, subject)`. Saving to the same key overwrites the 
 
 Use whatever category makes sense. These are defaults, not a strict list.
 
+### Descriptions
+
+Use `--desc` to provide a short one-liner (under 80 chars) for the memory context index. The description is what agents see at a glance; the full content is fetched on demand via `mem query`.
+
+Good descriptions are scannable and capture the essential "what is this about":
+- `--desc "Frontend colleague, GitHub alice-dev, ping for reviews"`
+- `--desc "Deploy freeze starts 2026-03-20 for mobile release"`
+- `--desc "Migrating to OAuth2, deadline 2026-04-01"`
+
+Without `--desc`, the hook falls back to truncating content to 80 chars.
+
 ### Examples
 ```bash
-mem fact people alice "frontend lead, loves Rust, GitHub: alice-dev"
+mem fact people alice "frontend lead, loves Rust, GitHub: alice-dev" --desc "Frontend colleague, GitHub alice-dev"
 mem fact work employer "Acme Corp"
-mem fact decisions deploy-freeze "starts 2026-03-20, no non-critical merges until mobile release cut"
-mem fact projects web-app "migrating auth to OAuth2, deadline 2026-04-01"
+mem fact decisions deploy-freeze "starts 2026-03-20, no non-critical merges until mobile release cut" --desc "Deploy freeze starts 2026-03-20 for mobile release"
+mem fact projects web-app "migrating auth to OAuth2, deadline 2026-04-01" --desc "Migrating to OAuth2, deadline 2026-04-01"
 mem fact preferences package-manager "always use pnpm, never hardcode npm"
 ```
 

@@ -6,6 +6,18 @@ How to find previously saved information. Two approaches: semantic search for na
 ## Before Asking the User, Check Memory First
 If the user asks about something that might already be stored (people, projects, decisions, preferences), search memory before asking them to repeat themselves.
 
+## Fetching from the Memory Context Index
+
+The `=== MEMORY CONTEXT ===` block shows an INDEX section with compact one-liners for most facts. To fetch full content for an indexed fact:
+
+```bash
+mem query "SELECT content FROM facts WHERE category='notes' AND subject='mobile-chat-jump'"
+mem query "SELECT content FROM facts WHERE category='people' AND subject='arpit'"
+mem query "SELECT content FROM facts WHERE category='projects' AND subject='raft-cli'"
+```
+
+Use the category and subject from the index line (format: `category/subject: description`).
+
 ## Semantic Search (`mem search`)
 
 Natural language search across all facts. Uses Gemini embeddings with cosine similarity (threshold >= 0.3). Falls back to keyword matching if no API key is configured.
@@ -65,7 +77,7 @@ mem status
 
 Four tables:
 
-- **facts** (`id`, `category`, `subject`, `content`, `created_at`, `updated_at`) — UNIQUE on (category, subject)
+- **facts** (`id`, `category`, `subject`, `content`, `description`, `created_at`, `updated_at`) — UNIQUE on (category, subject)
 - **soul** (`id`, `aspect`, `content`, `created_at`, `updated_at`) — UNIQUE on aspect
 - **daily_logs** (`id`, `date`, `content`, `created_at`) — append-only
 - **embeddings** (`id`, `fact_id`, `vector`, `model`, `created_at`) — auto-generated, linked to facts
