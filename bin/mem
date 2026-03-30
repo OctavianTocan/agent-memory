@@ -235,8 +235,8 @@ def cmd_export(_args):
         sys.exit(1)
     conn = get_conn()
     data = {
-        "facts": [dict(zip(["category", "subject", "content"], r))
-                  for r in conn.execute("SELECT category, subject, content FROM facts ORDER BY category, subject").fetchall()],
+        "facts": [dict(zip(["category", "subject", "content", "description"], r))
+                  for r in conn.execute("SELECT category, subject, content, description FROM facts ORDER BY category, subject").fetchall()],
         "soul": [dict(zip(["aspect", "content"], r))
                  for r in conn.execute("SELECT aspect, content FROM soul ORDER BY aspect").fetchall()],
         "logs": [dict(zip(["date", "content", "created_at"], r))
@@ -256,9 +256,9 @@ def cmd_dump(args):
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "tables": {
             "facts": [
-                dict(zip(["id", "category", "subject", "content", "created_at", "updated_at"], r))
+                dict(zip(["id", "category", "subject", "content", "description", "created_at", "updated_at"], r))
                 for r in conn.execute(
-                    "SELECT id, category, subject, content, created_at, updated_at FROM facts ORDER BY id"
+                    "SELECT id, category, subject, content, description, created_at, updated_at FROM facts ORDER BY id"
                 ).fetchall()
             ],
             "soul": [
@@ -322,10 +322,10 @@ def cmd_import(args):
         c = 0
         for row in tables.get("facts", []):
             conn.execute(
-                "INSERT OR REPLACE INTO facts (id, category, subject, content, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO facts (id, category, subject, content, description, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (row["id"], row["category"], row["subject"], row["content"],
-                 row.get("created_at"), row.get("updated_at")),
+                 row.get("description"), row.get("created_at"), row.get("updated_at")),
             )
             c += 1
         counts["facts"] = c
