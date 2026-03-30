@@ -3,20 +3,20 @@
 mem -- unified CLI for agent-memory
 
 Usage:
-    mem fact <category> <subject> <content>    Save a structured fact + auto-embed
-    mem soul <aspect> <content>                Save an interaction preference
-    mem log <note>                             Append to today's session log
-    mem search <query>                         Semantic search (keyword fallback)
-    mem query <sql>                            Raw SQLite query
-    mem embed <text>                           Generate an embedding vector
-    mem init                                   Initialize the database schema
-    mem status                                 Show database stats
-    mem export                                 Export all data as JSON (lightweight)
-    mem dump [file]                            Full database dump to JSON file
-    mem import [file] [--force]                Import data from a dump file
-    mem reset                                  Wipe the database (with confirmation)
-    mem update                                 Pull latest code + re-install
-    mem help                                   Show this help
+    mem fact <category> <subject> <content> [--desc <description>]  Save a structured fact + auto-embed
+    mem soul <aspect> <content>                                     Save an interaction preference
+    mem log <note>                                                  Append to today's session log
+    mem search <query>                                              Semantic search (keyword fallback)
+    mem query <sql>                                                 Raw SQLite query
+    mem embed <text>                                                Generate an embedding vector
+    mem init                                                        Initialize the database schema
+    mem status                                                      Show database stats
+    mem export                                                      Export all data as JSON (lightweight)
+    mem dump [file]                                                 Full database dump to JSON file
+    mem import [file] [--force]                                     Import data from a dump file
+    mem reset                                                       Wipe the database (with confirmation)
+    mem update                                                      Pull latest code + re-install
+    mem help                                                        Show this help
 """
 import sys, os, json, sqlite3, math, subprocess
 from datetime import date, datetime, timezone
@@ -30,17 +30,43 @@ def get_conn():
 # -- subcommands --
 
 def cmd_fact(args):
+    """
+    Save a structured fact with optional description.
+
+    Args are parsed for --desc flag first. If found, the next element is
+    the description value, and both are removed from args. The remainder
+    is parsed as: category, subject, content (content is joined from all
+    remaining args).
+
+    The description is a short one-liner (under 80 chars) used by the
+    context hook for compact index display.
+    """
+    # Parse --desc flag before validating args length
+    desc = None
+    if "--desc" in args:
+        idx = args.index("--desc")
+        if idx + 1 < len(args):
+            desc = args[idx + 1]
+            # Remove --desc and its value from args
+            args = args[:idx] + args[idx + 2:]
+        else:
+            print("Error: --desc flag requires a value", file=sys.stderr)
+            sys.exit(1)
+
     if len(args) < 3:
-        print("Usage: mem fact <category> <subject> <content>", file=sys.stderr)
+        print("Usage: mem fact <category> <subject> <content> [--desc <description>]", file=sys.stderr)
         sys.exit(1)
+
     category, subject, content = args[0], args[1], " ".join(args[2:])
     conn = get_conn()
     conn.execute("""
-        INSERT INTO facts (category, subject, content, updated_at)
-        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        INSERT INTO facts (category, subject, content, description, updated_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(category, subject) DO UPDATE SET
-            content = excluded.content, updated_at = CURRENT_TIMESTAMP
-    """, (category, subject, content))
+            content = excluded.content,
+            description = excluded.description,
+            updated_at = CURRENT_TIMESTAMP
+    """, (category, subject, content, desc))
     conn.commit()
     row = conn.execute("SELECT id FROM facts WHERE category=? AND subject=?", (category, subject)).fetchone()
     vector = do_embed(f"{category} {subject}: {content}")
