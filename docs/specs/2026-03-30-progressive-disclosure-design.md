@@ -7,6 +7,8 @@
 
 The `mem-context-hook` dumps all facts (37+), all soul entries (25+), and today's logs on every message. Most are irrelevant to any given prompt, wasting context window tokens and adding noise.
 
+Rough token estimate: ~37 facts at ~100 tokens each = ~3,700 fact tokens + soul + logs. After tiered injection: ~10 Tier 1 facts at ~100 tokens + ~27 index lines at ~15 tokens each = ~1,400 tokens. ~60% reduction in fact tokens.
+
 ## Solution: Tiered Injection
 
 Split the hook output into two tiers:
@@ -63,17 +65,26 @@ Add `description TEXT` column to the `facts` table. This is a short one-liner (u
 ALTER TABLE facts ADD COLUMN description TEXT;
 ```
 
-Fallback: if `description` is NULL, the hook truncates `content` to the first 80 characters for the index line.
+Fallback: if `description` is NULL, the hook truncates `content` to the first 80 characters for the index line (newlines replaced with spaces before truncation).
 
 ## Changes Required
 
-### 1. `mem-init` (bin/mem-init)
+### 1. Schema Init (`bin/mem-init` AND `cmd_init` in `bin/mem`)
 
-Add `description TEXT` column to the facts CREATE TABLE statement. Add an ALTER TABLE migration for existing databases.
+Both files define the facts schema independently. Both need the `description TEXT` column added to their CREATE TABLE statements. The ALTER TABLE migration must be idempotent (check PRAGMA table_info before altering) since `mem init` is documented as safe to run multiple times.
+
+```python
+cursor = conn.execute("PRAGMA table_info(facts)")
+columns = [row[1] for row in cursor.fetchall()]
+if "description" not in columns:
+    conn.execute("ALTER TABLE facts ADD COLUMN description TEXT")
+```
 
 ### 2. `mem fact` (bin/mem)
 
 Accept optional `--desc "..."` parameter. When provided, store it in the `description` column alongside the fact content.
+
+Parsing approach: scan `args` for `--desc`, pop it and the next element from the list, then join the remainder as content. This keeps the existing hand-rolled arg parsing style consistent.
 
 ```bash
 # New usage
@@ -88,7 +99,7 @@ mem fact notes quick-note "Something short"
 Replace the single "dump everything" query with tiered output:
 
 - **Tier 1 categories** (`user_info`, `preferences`): `SELECT category, subject, content FROM facts WHERE category IN ('user_info', 'preferences')`
-- **Tier 2 categories** (everything else): `SELECT category, subject, COALESCE(description, SUBSTR(content, 1, 80)) FROM facts WHERE category NOT IN ('user_info', 'preferences')`
+- **Tier 2 categories** (everything else): `SELECT category, subject, COALESCE(description, REPLACE(SUBSTR(content, 1, 80), CHAR(10), ' ')) FROM facts WHERE category NOT IN ('user_info', 'preferences')`
 - **Soul**: unchanged, always full content
 - **Today's log**: unchanged, always full content
 
@@ -105,9 +116,9 @@ mem query "SELECT content FROM facts WHERE category='notes' AND subject='mobile-
 
 **SKILL.md**: Update the CLI quick reference to show `--desc` parameter.
 
-### 5. `mem dump` / `mem import` (bin/mem)
+### 5. `mem dump` / `mem import` / `mem export` (bin/mem)
 
-Include the `description` field in export and import. The dump JSON should include `description` alongside `category`, `subject`, `content`.
+Include the `description` field in all serialization commands. The dump and export JSON should include `description` alongside `category`, `subject`, `content`. Import should restore it.
 
 ### 6. Backfill Existing Facts
 
@@ -119,7 +130,7 @@ mem query "UPDATE facts SET description='...' WHERE category='...' AND subject='
 
 ### 7. `mem-extract` (bin/mem-extract)
 
-No changes needed. Auto-extracted facts from regex patterns are simple enough that truncation fallback is fine, or descriptions can be hardcoded per pattern.
+No changes needed. Auto-extracted facts omit `description` in their INSERT, which defaults to NULL per SQLite behavior, triggering the truncation fallback in the hook. This is intentional since auto-extracted facts are simple enough for truncation to work.
 
 ## Design Decisions
 
