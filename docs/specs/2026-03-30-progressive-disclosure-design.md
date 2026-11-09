@@ -37,7 +37,7 @@ commit_message_format: always use conventional commits...
 
 USER:
 name: Octavian
-employer: Does NOT work at Anthropic. Currently Full-Stack Developer at ThirdEarAI.
+employer: Full-stack developer at a startup.
 portfolio-title: Prefers 'Product Engineer' as portfolio title.
 
 PREFERENCES:
@@ -50,9 +50,9 @@ TODAY'S LOG:
 INDEX (use `mem query "SELECT content FROM facts WHERE category='x' AND subject='y'"` to fetch full content):
 decisions/craft-ui-reskin: UI fork of Craft Agents OSS into minnetonka
 notes/ai-nexus: Active work on AI Nexus, fixing issues
-notes/mobile-chat-jump: Mobile web chat jump bug, PR #697, stuck
-people/arpit: Frontend colleague, GitHub arpitthirdear
-people/harsh: Colleague, GitHub hbhati12
+notes/mobile-chat-jump: Mobile web chat jump bug, stuck
+people/alex: Frontend colleague
+people/sam: Colleague
 projects/raft-cli: TUI for GitHub PR management, Bun + OpenTUI
 ...
 ```
@@ -88,7 +88,7 @@ Parsing approach: scan `args` for `--desc`, pop it and the next element from the
 
 ```bash
 # New usage
-mem fact notes mobile-chat-jump "Full debugging context..." --desc "Mobile web chat jump bug, PR #697, stuck"
+mem fact notes mobile-chat-jump "Full debugging context..." --desc "Mobile web chat jump bug, stuck"
 
 # Without --desc (description stays NULL, hook truncates content)
 mem fact notes quick-note "Something short"

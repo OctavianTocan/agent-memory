@@ -104,6 +104,6 @@ Log entries are **append-only** (never upserted). Each gets a timestamp and is g
 ```bash
 mem log "shipped v2.1 to production"
 mem log "decided to use Zustand over Redux for state management"
-mem log "merged PR #697 after fixing mobile chat jump"
+mem log "merged PR #42 after fixing mobile chat jump"
 mem log "user approved the new API design, moving to implementation"
 ```

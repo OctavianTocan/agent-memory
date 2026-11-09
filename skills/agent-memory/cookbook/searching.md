@@ -12,7 +12,7 @@ The `=== MEMORY CONTEXT ===` block shows an INDEX section with compact one-liner
 
 ```bash
 mem query "SELECT content FROM facts WHERE category='notes' AND subject='mobile-chat-jump'"
-mem query "SELECT content FROM facts WHERE category='people' AND subject='arpit'"
+mem query "SELECT content FROM facts WHERE category='people' AND subject='alex'"
 mem query "SELECT content FROM facts WHERE category='projects' AND subject='raft-cli'"
 ```
 
